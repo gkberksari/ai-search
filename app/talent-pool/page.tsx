@@ -1,3 +1,5 @@
+"use client";
+
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,13 +11,55 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Separator } from "@/components/ui/separator";
 import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
-import { applicantSchema } from "@/data/schema";
-import { promises as fs } from "fs";
+import { gql, useQuery } from "@apollo/client";
 import { Plus } from "lucide-react";
-import path from "path";
-import { z } from "zod";
+import React, { useCallback, useState } from "react";
 import { columns } from "./columns";
 import { DataTable } from "./data-table";
+
+const GET_APPLICANTS = gql`
+  query GetApplicants(
+    $page: Int!
+    $pageSize: Int
+    $filter: ApplicantListFilter
+    $sort: ApplicantListSort
+  ) {
+    getCompanyApplicantList(
+      page: $page
+      pageSize: $pageSize
+      filter: $filter
+      sort: $sort
+    ) {
+      applicants {
+        id
+        firstName
+        lastName
+        email
+        activeApplication {
+          stage {
+            name
+          }
+          jobListing {
+            name
+          }
+          resume {
+            url
+            name
+          }
+        }
+        rating
+        tags {
+          id
+          name
+          color
+        }
+        profilePhotoUrl
+      }
+      total
+      pages
+    }
+  }
+`;
 
 const user = {
   name: "Olivia Rhye",
@@ -23,24 +67,102 @@ const user = {
   avatar: "https://github.com/shadcn.png",
 };
 
-async function getApplicants() {
-  const data = await fs.readFile(
-    path.join(process.cwd(), "data", "applicants.json")
+export default function TalentPool() {
+  const [currentPage, setCurrentPage] = useState(1);
+  const [hasNextPage, setHasNextPage] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  const initialVariables = React.useMemo(
+    () => ({
+      page: 1,
+      pageSize: 20,
+      filter: {
+        filterParameters: [
+          {
+            name: "fullName",
+            operator: "contains",
+            filterVariable: "",
+          },
+        ],
+        isFavoriteApplicant: false,
+      },
+      sort: {
+        createdAt: "desc",
+      },
+    }),
+    []
   );
 
-  const applicantsData = JSON.parse(data.toString());
+  const { loading, error, data, fetchMore } = useQuery(GET_APPLICANTS, {
+    variables: initialVariables,
+    notifyOnNetworkStatusChange: true,
+    onCompleted: (data) => {
+      if (data?.getCompanyApplicantList) {
+        setHasNextPage(currentPage < data.getCompanyApplicantList.pages);
+      }
+    },
+  });
 
-  if (applicantsData.applicants) {
-    return z.array(applicantSchema).parse(applicantsData.applicants);
-  }
+  const loadMore = useCallback(() => {
+    if (loading || loadingMore || !hasNextPage) return;
 
-  return z.array(applicantSchema).parse([]);
-}
+    setLoadingMore(true);
+    const nextPage = currentPage + 1;
 
-export default async function TalentPool() {
-  const applicants = await getApplicants();
+    fetchMore({
+      variables: {
+        ...initialVariables,
+        page: nextPage,
+      },
+      updateQuery: (prev, { fetchMoreResult }) => {
+        if (!fetchMoreResult?.getCompanyApplicantList?.applicants?.length) {
+          setHasNextPage(false);
+          return prev;
+        }
+
+        setHasNextPage(
+          nextPage < fetchMoreResult.getCompanyApplicantList.pages
+        );
+
+        return {
+          ...prev,
+          getCompanyApplicantList: {
+            ...prev.getCompanyApplicantList,
+            applicants: [
+              ...prev.getCompanyApplicantList.applicants,
+              ...fetchMoreResult.getCompanyApplicantList.applicants,
+            ],
+            total: fetchMoreResult.getCompanyApplicantList.total,
+            pages: fetchMoreResult.getCompanyApplicantList.pages,
+          },
+        };
+      },
+    })
+      .then(() => {
+        setCurrentPage(nextPage);
+        setLoadingMore(false);
+      })
+      .catch((err) => {
+        console.error("Error fetching more applicants:", err);
+        setLoadingMore(false);
+      });
+  }, [
+    loading,
+    loadingMore,
+    hasNextPage,
+    currentPage,
+    fetchMore,
+    initialVariables,
+  ]);
+
+  if (loading && !data) return <p>Loading...</p>;
+  if (error) return <p>Error: {error.message}</p>;
+
+  const applicants = data?.getCompanyApplicantList?.applicants ?? [];
+  const totalApplicants = data?.getCompanyApplicantList?.total ?? 0;
+
   return (
-    <SidebarInset className="overflow-hidden xl:p-8">
+    <SidebarInset className="overflow-y-auto xl:p-8">
       <header className="flex h-16 shrink-0 items-center justify-between gap-2 md:border-b border-none px-4 xl:hidden">
         <SidebarTrigger className="xl:hidden flex" />
         <DropdownMenu>
@@ -69,7 +191,7 @@ export default async function TalentPool() {
                 variant="secondary"
                 className="rounded-full text-base font-normal"
               >
-                {applicants.length}
+                {totalApplicants}
               </Badge>
             </div>
             <div className="text-sm text-gray-500">
@@ -83,7 +205,13 @@ export default async function TalentPool() {
         </div>
         <Separator className="mt-4" />
         <div className="h-full flex-1 flex-col space-y-8 pt-6">
-          <DataTable data={applicants} columns={columns} />
+          <DataTable
+            data={applicants}
+            columns={columns}
+            fetchNextPage={loadMore}
+            hasNextPage={hasNextPage}
+            isFetchingNextPage={loadingMore}
+          />
         </div>
       </div>
     </SidebarInset>
