@@ -66,6 +66,7 @@ export const columns: ColumnDef<Applicant>[] = [
         </div>
       );
     },
+    enableSorting: false,
   },
   {
     accessorKey: "email",
@@ -79,6 +80,7 @@ export const columns: ColumnDef<Applicant>[] = [
         </div>
       );
     },
+    enableSorting: false,
   },
   {
     accessorKey: "stage",
@@ -111,6 +113,7 @@ export const columns: ColumnDef<Applicant>[] = [
     filterFn: (row, id, value) => {
       return value.includes(row.original.activeApplication.stage.name);
     },
+    enableSorting: true,
   },
   {
     accessorKey: "rating",
@@ -124,6 +127,7 @@ export const columns: ColumnDef<Applicant>[] = [
     filterFn: (row, id, value) => {
       return value.includes(row.original.rating.toString());
     },
+    enableSorting: true,
   },
   {
     accessorKey: "jobListing",
@@ -152,6 +156,7 @@ export const columns: ColumnDef<Applicant>[] = [
     filterFn: (row, id, value) => {
       return value.includes(row.original.activeApplication.jobListing.name);
     },
+    enableSorting: false,
   },
   {
     accessorKey: "resume",
@@ -174,6 +179,7 @@ export const columns: ColumnDef<Applicant>[] = [
         </div>
       );
     },
+    enableSorting: false,
   },
   {
     accessorKey: "tags",
@@ -207,9 +213,11 @@ export const columns: ColumnDef<Applicant>[] = [
         </div>
       );
     },
+    enableSorting: false,
   },
-  // {
-  //   id: "actions",
-  //   cell: ({ row }) => <DataTableRowActions row={row} />,
-  // },
+  {
+    id: "actions",
+    cell: ({ row }) => <DataTableRowActions row={row} />,
+    enableSorting: false,
+  },
 ];

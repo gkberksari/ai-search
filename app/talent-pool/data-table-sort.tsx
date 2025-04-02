@@ -20,46 +20,56 @@ import {
 
 interface DataTableSortProps<TData> {
   table: Table<TData>;
+  sortState?: { field: string; direction: string };
+  setSortState?: React.Dispatch<
+    React.SetStateAction<{ field: string; direction: string }>
+  >;
 }
 
+const sortFieldMapping: Record<string, string> = {
+  stage: "stage",
+  rating: "avgRating",
+};
+
+const SORTABLE_COLUMNS = ["stage", "rating"];
+
 const sortOptions: Record<string, { label: string; value: boolean }[]> = {
-  dateAdded: [
-    { label: "From Newest", value: true },
-    { label: "From Oldest", value: false },
-  ],
   rating: [
     { label: "High to Low", value: true },
     { label: "Low to High", value: false },
   ],
-  default: [
+  stage: [
     { label: "Desc.", value: true },
     { label: "Asc.", value: false },
   ],
 };
 
 const columnDisplayNames: Record<string, { name: string; type: string }> = {
-  email: { name: "Email", type: "default" },
-  stage: { name: "Stage", type: "default" },
+  stage: { name: "Stage", type: "stage" },
   rating: { name: "Rating", type: "rating" },
-  jobListing: { name: "Applied Job", type: "default" },
-  resume: { name: "Resume", type: "default" },
-  tags: { name: "Tags", type: "default" },
-  dateAdded: { name: "Date Added", type: "dateAdded" },
 };
 
-export function DataTableSort<TData>({ table }: DataTableSortProps<TData>) {
+export function DataTableSort<TData>({
+  table,
+  sortState,
+  setSortState,
+}: DataTableSortProps<TData>) {
   const { sorting } = table.getState();
 
   const [selectedColumn, setSelectedColumn] = React.useState<string>(
-    sorting.length > 0 ? sorting[0].id : ""
+    sorting.length > 0 && SORTABLE_COLUMNS.includes(sorting[0].id)
+      ? sorting[0].id
+      : ""
   );
 
   const [selectedSort, setSelectedSort] = React.useState<boolean | null>(
-    sorting.length > 0 ? sorting[0].desc : null
+    sorting.length > 0 && SORTABLE_COLUMNS.includes(sorting[0].id)
+      ? sorting[0].desc
+      : null
   );
 
   React.useEffect(() => {
-    if (sorting.length > 0) {
+    if (sorting.length > 0 && SORTABLE_COLUMNS.includes(sorting[0].id)) {
       setSelectedColumn(sorting[0].id);
       setSelectedSort(sorting[0].desc);
     } else {
@@ -71,7 +81,7 @@ export function DataTableSort<TData>({ table }: DataTableSortProps<TData>) {
   const sortableColumns = React.useMemo(() => {
     return table
       .getAllColumns()
-      .filter((column) => column.getCanSort())
+      .filter((column) => SORTABLE_COLUMNS.includes(column.id))
       .map((column) => ({
         id: column.id,
         ...(columnDisplayNames[column.id] || {
@@ -82,10 +92,7 @@ export function DataTableSort<TData>({ table }: DataTableSortProps<TData>) {
   }, [table]);
 
   const getSortOptionsForColumn = (columnId: string) => {
-    const column = sortableColumns.find((col) => col.id === columnId);
-    if (!column) return sortOptions.default;
-
-    return sortOptions[column.type] || sortOptions.default;
+    return sortOptions[columnId] || sortOptions.stage;
   };
 
   const getActiveSortLabel = () => {
@@ -104,6 +111,14 @@ export function DataTableSort<TData>({ table }: DataTableSortProps<TData>) {
 
   const handleApplySort = (columnId: string, desc: boolean) => {
     table.getColumn(columnId)?.toggleSorting(desc);
+
+    if (setSortState) {
+      const backendField = sortFieldMapping[columnId] || columnId;
+      setSortState({
+        field: backendField,
+        direction: desc ? "desc" : "asc",
+      });
+    }
   };
 
   const activeSortLabel = getActiveSortLabel();
@@ -184,6 +199,13 @@ export function DataTableSort<TData>({ table }: DataTableSortProps<TData>) {
               table.resetSorting();
               setSelectedColumn("");
               setSelectedSort(null);
+
+              if (setSortState) {
+                setSortState({
+                  field: "createdAt",
+                  direction: "desc",
+                });
+              }
             }}
           >
             Reset Sort

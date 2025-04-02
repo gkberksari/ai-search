@@ -117,4 +117,35 @@ export const applicantSchema = z.object({
   __typename: z.string(),
 });
 
+export const applicantDisplaySchema = z.object({
+  id: z.string(),
+  firstName: z.string(),
+  lastName: z.string(),
+  email: z.string(),
+  profilePhotoUrl: z.string().nullable(),
+  rating: z.number(),
+  activeApplication: z.object({
+    stage: z.object({
+      name: z.string(),
+    }),
+    jobListing: z.object({
+      name: z.string(),
+    }),
+    resume: z
+      .object({
+        url: z.string(),
+        name: z.string(),
+      })
+      .nullable(),
+  }),
+  tags: z.array(
+    z.object({
+      id: z.string(),
+      name: z.string(),
+      color: z.string(),
+    })
+  ),
+});
+
 export type Applicant = z.infer<typeof applicantSchema>;
+export type ApplicantDisplay = z.infer<typeof applicantDisplaySchema>;

@@ -13,7 +13,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-import { applicantSchema } from "@/data/schema";
+import { applicantDisplaySchema } from "@/data/schema";
 
 interface DataTableRowActionsProps<TData> {
   row: Row<TData>;
@@ -22,7 +22,7 @@ interface DataTableRowActionsProps<TData> {
 export function DataTableRowActions<TData>({
   row,
 }: DataTableRowActionsProps<TData>) {
-  const applicant = applicantSchema.parse(row.original);
+  const applicant = applicantDisplaySchema.parse(row.original);
 
   return (
     <DropdownMenu>

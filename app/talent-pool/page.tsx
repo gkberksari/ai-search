@@ -13,7 +13,7 @@ import { Separator } from "@/components/ui/separator";
 import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { gql, useQuery } from "@apollo/client";
 import { Plus } from "lucide-react";
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { columns } from "./columns";
 import { DataTable } from "./data-table";
 
@@ -71,37 +71,61 @@ export default function TalentPool() {
   const [currentPage, setCurrentPage] = useState(1);
   const [hasNextPage, setHasNextPage] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
+  const [sortState, setSortState] = useState({
+    field: "createdAt",
+    direction: "desc",
+  });
 
-  const initialVariables = React.useMemo(
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  const variables = React.useMemo(
     () => ({
       page: 1,
-      pageSize: 20,
+      pageSize: 10,
       filter: {
         filterParameters: [
           {
             name: "fullName",
             operator: "contains",
             filterVariable: "",
+            logicalOperator: "AND",
           },
         ],
         isFavoriteApplicant: false,
+        query: debouncedSearchTerm,
       },
       sort: {
-        createdAt: "desc",
+        [sortState.field]: sortState.direction,
       },
     }),
-    []
+    [debouncedSearchTerm, sortState]
   );
 
-  const { loading, error, data, fetchMore } = useQuery(GET_APPLICANTS, {
-    variables: initialVariables,
-    notifyOnNetworkStatusChange: true,
-    onCompleted: (data) => {
-      if (data?.getCompanyApplicantList) {
-        setHasNextPage(currentPage < data.getCompanyApplicantList.pages);
-      }
-    },
-  });
+  const { loading, error, data, fetchMore, refetch } = useQuery(
+    GET_APPLICANTS,
+    {
+      variables,
+      notifyOnNetworkStatusChange: true,
+      onCompleted: (data) => {
+        if (data?.getCompanyApplicantList) {
+          setHasNextPage(currentPage < data.getCompanyApplicantList.pages);
+        }
+      },
+    }
+  );
+
+  useEffect(() => {
+    setCurrentPage(1);
+    refetch(variables);
+  }, [debouncedSearchTerm, sortState, refetch, variables]);
 
   const loadMore = useCallback(() => {
     if (loading || loadingMore || !hasNextPage) return;
@@ -111,7 +135,7 @@ export default function TalentPool() {
 
     fetchMore({
       variables: {
-        ...initialVariables,
+        ...variables,
         page: nextPage,
       },
       updateQuery: (prev, { fetchMoreResult }) => {
@@ -146,14 +170,7 @@ export default function TalentPool() {
         console.error("Error fetching more applicants:", err);
         setLoadingMore(false);
       });
-  }, [
-    loading,
-    loadingMore,
-    hasNextPage,
-    currentPage,
-    fetchMore,
-    initialVariables,
-  ]);
+  }, [loading, loadingMore, hasNextPage, currentPage, fetchMore, variables]);
 
   if (loading && !data) return <p>Loading...</p>;
   if (error) return <p>Error: {error.message}</p>;
@@ -162,8 +179,8 @@ export default function TalentPool() {
   const totalApplicants = data?.getCompanyApplicantList?.total ?? 0;
 
   return (
-    <SidebarInset className="overflow-y-auto xl:p-8">
-      <header className="flex h-16 shrink-0 items-center justify-between gap-2 md:border-b border-none px-4 xl:hidden">
+    <SidebarInset className="overflow-y-auto py-8">
+      <header className="flex sticky top-0 h-16 shrink-0 items-center justify-between gap-2 md:border-b border-none px-4 xl:hidden">
         <SidebarTrigger className="xl:hidden flex" />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -183,7 +200,7 @@ export default function TalentPool() {
         </DropdownMenu>
       </header>
       <div className="pt-8 xl:pt-0">
-        <div className="flex max-md:flex-col items-center justify-between flex-1 px-8 xl:px-0 max-md:gap-4">
+        <div className="flex max-md:flex-col items-center justify-between flex-1 px-8 max-md:gap-4">
           <div className="flex flex-col gap-1">
             <div className="flex items-center gap-2">
               <h2 className="text-3xl font-semibold">Talent Pool</h2>
@@ -211,6 +228,10 @@ export default function TalentPool() {
             fetchNextPage={loadMore}
             hasNextPage={hasNextPage}
             isFetchingNextPage={loadingMore}
+            searchTerm={searchTerm}
+            setSearchTerm={setSearchTerm}
+            sortState={sortState}
+            setSortState={setSortState}
           />
         </div>
       </div>

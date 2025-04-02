@@ -33,6 +33,12 @@ interface DataTableProps<TData, TValue> {
   fetchNextPage?: () => void;
   hasNextPage?: boolean;
   isFetchingNextPage?: boolean;
+  searchTerm?: string;
+  setSearchTerm?: (value: string) => void;
+  sortState?: { field: string; direction: string };
+  setSortState?: React.Dispatch<
+    React.SetStateAction<{ field: string; direction: string }>
+  >;
 }
 
 export function DataTable<TData, TValue>({
@@ -41,6 +47,10 @@ export function DataTable<TData, TValue>({
   fetchNextPage,
   hasNextPage,
   isFetchingNextPage,
+  searchTerm = "",
+  setSearchTerm,
+  sortState,
+  setSortState,
 }: DataTableProps<TData, TValue>) {
   const [rowSelection, setRowSelection] = React.useState({});
   const [columnVisibility, setColumnVisibility] =
@@ -100,7 +110,13 @@ export function DataTable<TData, TValue>({
 
   return (
     <div className="space-y-4">
-      <DataTableToolbar table={table} />
+      <DataTableToolbar
+        table={table}
+        searchTerm={searchTerm}
+        setSearchTerm={setSearchTerm}
+        sortState={sortState}
+        setSortState={setSortState}
+      />
       <div className="rounded-md">
         <Table className="text-xs">
           <TableHeader>
