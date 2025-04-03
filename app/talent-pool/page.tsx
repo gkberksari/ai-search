@@ -16,6 +16,7 @@ import { Plus } from "lucide-react";
 import React, { useCallback, useEffect, useState } from "react";
 import { columns } from "./columns";
 import { DataTable } from "./data-table";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const GET_APPLICANTS = gql`
   query GetApplicants(
@@ -172,15 +173,12 @@ export default function TalentPool() {
       });
   }, [loading, loadingMore, hasNextPage, currentPage, fetchMore, variables]);
 
-  if (loading && !data) return <p>Loading...</p>;
-  if (error) return <p>Error: {error.message}</p>;
-
   const applicants = data?.getCompanyApplicantList?.applicants ?? [];
   const totalApplicants = data?.getCompanyApplicantList?.total ?? 0;
 
   return (
-    <SidebarInset className="overflow-y-auto py-8">
-      <header className="flex sticky top-0 h-16 shrink-0 items-center justify-between gap-2 md:border-b border-none px-4 xl:hidden">
+    <SidebarInset className="overflow-x-auto py-8 max-xl:py-0">
+      <header className="flex sticky top-0 h-[60px] shrink-0 items-center justify-between gap-2 md:border-b border-none px-4 xl:hidden">
         <SidebarTrigger className="xl:hidden flex" />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -199,7 +197,7 @@ export default function TalentPool() {
           </DropdownMenuContent>
         </DropdownMenu>
       </header>
-      <div className="pt-8 xl:pt-0">
+      <div className="pt-2 xl:pt-0">
         <div className="flex max-md:flex-col items-center justify-between flex-1 px-8 max-md:gap-4">
           <div className="flex flex-col gap-1">
             <div className="flex items-center gap-2">
@@ -208,7 +206,11 @@ export default function TalentPool() {
                 variant="secondary"
                 className="rounded-full text-base font-normal"
               >
-                {totalApplicants}
+                {loading && !data ? (
+                  <Skeleton className="h-6 w-10 rounded-full" />
+                ) : (
+                  totalApplicants
+                )}
               </Badge>
             </div>
             <div className="text-sm text-gray-500">
@@ -221,9 +223,9 @@ export default function TalentPool() {
           </Button>
         </div>
         <Separator className="mt-4" />
-        <div className="h-full flex-1 flex-col space-y-8 pt-6">
+        <div className="h-full flex-1 flex-col space-y-8 pt-6 max-xl:pt-3 sm:max-h-[calc(100vh-150px)] max-h-[calc(100vh-220px)] overflow-y-auto">
           <DataTable
-            data={applicants}
+            data={loading && !data ? [] : applicants}
             columns={columns}
             fetchNextPage={loadMore}
             hasNextPage={hasNextPage}
@@ -232,6 +234,8 @@ export default function TalentPool() {
             setSearchTerm={setSearchTerm}
             sortState={sortState}
             setSortState={setSortState}
+            isLoading={!error && loading && !data}
+            error={error}
           />
         </div>
       </div>

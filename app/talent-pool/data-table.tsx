@@ -24,6 +24,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
+import { Skeleton } from "@/components/ui/skeleton";
 import { Plus } from "lucide-react";
 import { DataTableToolbar } from "./data-table-toolbar";
 
@@ -39,6 +40,8 @@ interface DataTableProps<TData, TValue> {
   setSortState?: React.Dispatch<
     React.SetStateAction<{ field: string; direction: string }>
   >;
+  isLoading?: boolean;
+  error?: Error | null;
 }
 
 export function DataTable<TData, TValue>({
@@ -51,6 +54,8 @@ export function DataTable<TData, TValue>({
   setSearchTerm,
   sortState,
   setSortState,
+  isLoading = false,
+  error = null,
 }: DataTableProps<TData, TValue>) {
   const [rowSelection, setRowSelection] = React.useState({});
   const [columnVisibility, setColumnVisibility] =
@@ -138,7 +143,28 @@ export function DataTable<TData, TValue>({
             ))}
           </TableHeader>
           <TableBody>
-            {table.getRowModel().rows?.length ? (
+            {isLoading ? (
+              Array.from({ length: 10 }).map((_, index) => (
+                <TableRow key={`skeleton-${index}`} className="h-16">
+                  {Array.from({ length: columns.length }).map(
+                    (_, cellIndex) => (
+                      <TableCell key={`skeleton-cell-${index}-${cellIndex}`}>
+                        <Skeleton className="h-4 w-[90%]" />
+                      </TableCell>
+                    )
+                  )}
+                </TableRow>
+              ))
+            ) : error || table.getRowModel().rows?.length < 1 ? (
+              <TableRow>
+                <TableCell
+                  colSpan={columns.length}
+                  className="h-24 text-center"
+                >
+                  No results.
+                </TableCell>
+              </TableRow>
+            ) : (
               table.getRowModel().rows.map((row) => (
                 <TableRow
                   key={row.id}
@@ -154,17 +180,8 @@ export function DataTable<TData, TValue>({
                   ))}
                 </TableRow>
               ))
-            ) : (
-              <TableRow>
-                <TableCell
-                  colSpan={columns.length}
-                  className="h-24 text-center"
-                >
-                  No results.
-                </TableCell>
-              </TableRow>
             )}
-            {(hasNextPage || isFetchingNextPage) && (
+            {!isLoading && !error && (hasNextPage || isFetchingNextPage) && (
               <TableRow ref={bottomRef}>
                 <TableCell
                   colSpan={columns.length}
@@ -174,17 +191,19 @@ export function DataTable<TData, TValue>({
                 </TableCell>
               </TableRow>
             )}
-            <TableRow className="hover:bg-muted/50 cursor-pointer">
-              <TableCell colSpan={2} className="font-medium">
-                <div className="flex items-center gap-3">
-                  <Plus size={20} />
-                  Add Talent
-                </div>
-              </TableCell>
-              {Array.from({ length: columns.length - 3 }).map((_, i) => (
-                <TableCell key={i}></TableCell>
-              ))}
-            </TableRow>
+            {!isLoading && (
+              <TableRow className="hover:bg-muted/50 cursor-pointer">
+                <TableCell colSpan={2} className="font-medium">
+                  <div className="flex items-center gap-3">
+                    <Plus size={20} />
+                    Add Talent
+                  </div>
+                </TableCell>
+                {Array.from({ length: columns.length - 3 }).map((_, i) => (
+                  <TableCell key={i}></TableCell>
+                ))}
+              </TableRow>
+            )}
           </TableBody>
         </Table>
       </div>
