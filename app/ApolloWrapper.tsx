@@ -9,8 +9,9 @@ import {
 
 function makeClient() {
   const token = process.env.NEXT_PUBLIC_API_TOKEN;
+  const url = process.env.NEXT_PUBLIC_API_URL;
   const httpLink = new HttpLink({
-    uri: "https://staging-api.hrpanda.co/graphql",
+    uri: url,
     headers: {
       Authorization: `Bearer ${token}`,
     },

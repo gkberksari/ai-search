@@ -217,7 +217,7 @@ export default function TalentPool() {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Avatar className="cursor-pointer flex xl:hidden">
-              <AvatarImage src={user.avatar} />
+              <AvatarImage src={user.avatar} alt={`${user.name}'s avatar`} />
               <AvatarFallback>CN</AvatarFallback>
             </Avatar>
           </DropdownMenuTrigger>

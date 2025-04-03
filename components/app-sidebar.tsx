@@ -33,12 +33,12 @@ import {
 const items = [
   {
     title: "Overview",
-    url: "/dashboard",
+    url: "/talent-pool",
     icon: Home,
   },
   {
     title: "Jobs",
-    url: "/jobs",
+    url: "/talent-pool",
     icon: Bookmark,
   },
   {
@@ -48,7 +48,7 @@ const items = [
   },
   {
     title: "Inbox",
-    url: "/inbox",
+    url: "/talent-pool",
     icon: Mail,
   },
 ];
