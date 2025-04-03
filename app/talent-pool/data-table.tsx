@@ -3,6 +3,7 @@
 import {
   ColumnDef,
   ColumnFiltersState,
+  ColumnPinningState,
   SortingState,
   VisibilityState,
   flexRender,
@@ -64,6 +65,10 @@ export function DataTable<TData, TValue>({
     []
   );
   const [sorting, setSorting] = React.useState<SortingState>([]);
+  const [columnPinning, setColumnPinning] = React.useState<ColumnPinningState>({
+    // left: ["select", "name"],
+    right: ["actions"],
+  });
 
   const table = useReactTable({
     data,
@@ -73,12 +78,14 @@ export function DataTable<TData, TValue>({
       columnVisibility,
       rowSelection,
       columnFilters,
+      columnPinning,
     },
     enableRowSelection: true,
     onRowSelectionChange: setRowSelection,
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     onColumnVisibilityChange: setColumnVisibility,
+    onColumnPinningChange: setColumnPinning,
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getSortedRowModel: getSortedRowModel(),
@@ -122,14 +129,34 @@ export function DataTable<TData, TValue>({
         sortState={sortState}
         setSortState={setSortState}
       />
-      <div className="rounded-md">
+      <div className="rounded-md overflow-auto xl:max-h-[calc(100vh-260px)] max-h-[calc(100vh-290px)] max-sm:max-h-[calc(100vh-480px)]">
         <Table className="text-xs">
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id}>
                 {headerGroup.headers.map((header) => {
                   return (
-                    <TableHead key={header.id} colSpan={header.colSpan}>
+                    <TableHead
+                      key={header.id}
+                      colSpan={header.colSpan}
+                      style={{
+                        position: header.column.getIsPinned()
+                          ? "sticky"
+                          : undefined,
+                        left:
+                          header.column.getIsPinned() === "left"
+                            ? `${header.column.getStart()}px`
+                            : undefined,
+                        right:
+                          header.column.getIsPinned() === "right"
+                            ? `${header.column.getAfter()}px`
+                            : undefined,
+                        zIndex: header.column.getIsPinned() ? 21 : undefined,
+                        backgroundColor: header.column.getIsPinned()
+                          ? "white"
+                          : undefined,
+                      }}
+                    >
                       {header.isPlaceholder
                         ? null
                         : flexRender(
@@ -171,7 +198,26 @@ export function DataTable<TData, TValue>({
                   data-state={row.getIsSelected() && "selected"}
                 >
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
+                    <TableCell
+                      key={cell.id}
+                      style={{
+                        position: cell.column.getIsPinned()
+                          ? "sticky"
+                          : undefined,
+                        left:
+                          cell.column.getIsPinned() === "left"
+                            ? `${cell.column.getStart()}px`
+                            : undefined,
+                        right:
+                          cell.column.getIsPinned() === "right"
+                            ? `${cell.column.getAfter()}px`
+                            : undefined,
+                        zIndex: cell.column.getIsPinned() ? 1 : undefined,
+                        backgroundColor: cell.column.getIsPinned()
+                          ? "white"
+                          : undefined,
+                      }}
+                    >
                       {flexRender(
                         cell.column.columnDef.cell,
                         cell.getContext()
@@ -191,7 +237,7 @@ export function DataTable<TData, TValue>({
                 </TableCell>
               </TableRow>
             )}
-            {!isLoading && (
+            {/* {!isLoading && (
               <TableRow className="hover:bg-muted/50 cursor-pointer">
                 <TableCell colSpan={2} className="font-medium">
                   <div className="flex items-center gap-3">
@@ -203,7 +249,7 @@ export function DataTable<TData, TValue>({
                   <TableCell key={i}></TableCell>
                 ))}
               </TableRow>
-            )}
+            )} */}
           </TableBody>
         </Table>
       </div>

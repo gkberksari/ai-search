@@ -223,7 +223,7 @@ export default function TalentPool() {
           </Button>
         </div>
         <Separator className="mt-4" />
-        <div className="h-full flex-1 flex-col space-y-8 pt-6 max-xl:pt-3 sm:max-h-[calc(100vh-150px)] max-h-[calc(100vh-220px)] overflow-y-auto">
+        <div className="h-full flex-1 flex-col space-y-8 pt-6 max-xl:pt-3">
           <DataTable
             data={loading && !data ? [] : applicants}
             columns={columns}
