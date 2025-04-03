@@ -26,7 +26,6 @@ import {
 } from "@/components/ui/table";
 
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus } from "lucide-react";
 import { DataTableToolbar } from "./data-table-toolbar";
 
 interface DataTableProps<TData, TValue> {
@@ -43,6 +42,15 @@ interface DataTableProps<TData, TValue> {
   >;
   isLoading?: boolean;
   error?: Error | null;
+  isAIFiltered?: boolean;
+  commandBarOpen?: boolean;
+  setCommandBarOpen?: (open: boolean) => void;
+  commandSearchTerm?: string;
+  setCommandSearchTerm?: (value: string) => void;
+  commandIsProcessing?: boolean;
+  processSearch?: (value: string) => void;
+  clearAIFilter?: () => void;
+  totalResults?: number;
 }
 
 export function DataTable<TData, TValue>({
@@ -57,6 +65,15 @@ export function DataTable<TData, TValue>({
   setSortState,
   isLoading = false,
   error = null,
+  isAIFiltered = false,
+  commandBarOpen = false,
+  setCommandBarOpen = () => {},
+  commandSearchTerm = "",
+  setCommandSearchTerm = () => {},
+  commandIsProcessing = false,
+  processSearch = () => {},
+  clearAIFilter = () => {},
+  totalResults = 0,
 }: DataTableProps<TData, TValue>) {
   const [rowSelection, setRowSelection] = React.useState({});
   const [columnVisibility, setColumnVisibility] =
@@ -66,7 +83,6 @@ export function DataTable<TData, TValue>({
   );
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [columnPinning, setColumnPinning] = React.useState<ColumnPinningState>({
-    // left: ["select", "name"],
     right: ["actions"],
   });
 
@@ -101,7 +117,6 @@ export function DataTable<TData, TValue>({
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0].isIntersecting && hasNextPage && !isFetchingNextPage) {
-          console.log("Fetching next page...");
           fetchNextPage();
         }
       },
@@ -128,8 +143,17 @@ export function DataTable<TData, TValue>({
         setSearchTerm={setSearchTerm}
         sortState={sortState}
         setSortState={setSortState}
+        isAIFiltered={isAIFiltered}
+        commandBarOpen={commandBarOpen}
+        setCommandBarOpen={setCommandBarOpen}
+        commandSearchTerm={commandSearchTerm}
+        setCommandSearchTerm={setCommandSearchTerm}
+        commandIsProcessing={commandIsProcessing}
+        processSearch={processSearch}
+        clearAIFilter={clearAIFilter}
+        totalResults={totalResults}
       />
-      <div className="rounded-md overflow-auto xl:max-h-[calc(100vh-260px)] max-h-[calc(100vh-290px)] max-sm:max-h-[calc(100vh-480px)]">
+      <div className="rounded-md overflow-auto xl:max-h-[calc(100vh-265px)] max-h-[calc(100vh-290px)] max-sm:max-h-[calc(100vh-480px)]">
         <Table className="text-xs">
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
@@ -237,19 +261,6 @@ export function DataTable<TData, TValue>({
                 </TableCell>
               </TableRow>
             )}
-            {/* {!isLoading && (
-              <TableRow className="hover:bg-muted/50 cursor-pointer">
-                <TableCell colSpan={2} className="font-medium">
-                  <div className="flex items-center gap-3">
-                    <Plus size={20} />
-                    Add Talent
-                  </div>
-                </TableCell>
-                {Array.from({ length: columns.length - 3 }).map((_, i) => (
-                  <TableCell key={i}></TableCell>
-                ))}
-              </TableRow>
-            )} */}
           </TableBody>
         </Table>
       </div>

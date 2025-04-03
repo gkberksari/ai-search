@@ -29,9 +29,10 @@ interface DataTableSortProps<TData> {
 const sortFieldMapping: Record<string, string> = {
   stage: "stage",
   rating: "avgRating",
+  salaryExp: "salaryExp",
 };
 
-const SORTABLE_COLUMNS = ["stage", "rating"];
+const SORTABLE_COLUMNS = ["stage", "rating", "salaryExp"];
 
 const sortOptions: Record<string, { label: string; value: boolean }[]> = {
   rating: [
@@ -42,11 +43,16 @@ const sortOptions: Record<string, { label: string; value: boolean }[]> = {
     { label: "Desc.", value: true },
     { label: "Asc.", value: false },
   ],
+  salaryExp: [
+    { label: "High to Low", value: true },
+    { label: "Low to High", value: false },
+  ],
 };
 
 const columnDisplayNames: Record<string, { name: string; type: string }> = {
   stage: { name: "Stage", type: "stage" },
   rating: { name: "Rating", type: "rating" },
+  salaryExp: { name: "Salary Exp.", type: "salary" },
 };
 
 export function DataTableSort<TData>({

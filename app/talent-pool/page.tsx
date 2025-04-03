@@ -11,12 +11,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Separator } from "@/components/ui/separator";
 import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useCommandBar } from "@/hooks/use-command-bar";
 import { gql, useQuery } from "@apollo/client";
 import { Plus } from "lucide-react";
 import React, { useCallback, useEffect, useState } from "react";
 import { columns } from "./columns";
 import { DataTable } from "./data-table";
-import { Skeleton } from "@/components/ui/skeleton";
 
 const GET_APPLICANTS = gql`
   query GetApplicants(
@@ -47,6 +48,9 @@ const GET_APPLICANTS = gql`
             url
             name
           }
+          salaryExp
+          salaryExpCurr
+          salaryExpPeriod
         }
         rating
         tags {
@@ -78,6 +82,21 @@ export default function TalentPool() {
     field: "createdAt",
     direction: "desc",
   });
+  const [customFilter, setCustomFilter] = useState<any>(null);
+
+  const {
+    open: commandBarOpen,
+    setOpen: setCommandBarOpen,
+    searchTerm: commandSearchTerm,
+    setSearchTerm: setCommandSearchTerm,
+    isProcessing: commandIsProcessing,
+    processSearch,
+  } = useCommandBar({
+    onFilterChange: (filter) => {
+      setCurrentPage(1);
+      setCustomFilter(filter);
+    },
+  });
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -87,8 +106,19 @@ export default function TalentPool() {
     return () => clearTimeout(timer);
   }, [searchTerm]);
 
-  const variables = React.useMemo(
-    () => ({
+  const variables = React.useMemo(() => {
+    if (customFilter) {
+      return {
+        page: 1,
+        pageSize: 10,
+        filter: customFilter,
+        sort: {
+          [sortState.field]: sortState.direction,
+        },
+      };
+    }
+
+    return {
       page: 1,
       pageSize: 10,
       filter: {
@@ -106,9 +136,8 @@ export default function TalentPool() {
       sort: {
         [sortState.field]: sortState.direction,
       },
-    }),
-    [debouncedSearchTerm, sortState]
-  );
+    };
+  }, [debouncedSearchTerm, sortState, customFilter]);
 
   const { loading, error, data, fetchMore, refetch } = useQuery(
     GET_APPLICANTS,
@@ -126,7 +155,7 @@ export default function TalentPool() {
   useEffect(() => {
     setCurrentPage(1);
     refetch(variables);
-  }, [debouncedSearchTerm, sortState, refetch, variables]);
+  }, [debouncedSearchTerm, sortState, refetch, variables, customFilter]);
 
   const loadMore = useCallback(() => {
     if (loading || loadingMore || !hasNextPage) return;
@@ -176,6 +205,11 @@ export default function TalentPool() {
   const applicants = data?.getCompanyApplicantList?.applicants ?? [];
   const totalApplicants = data?.getCompanyApplicantList?.total ?? 0;
 
+  const clearAIFilter = useCallback(() => {
+    setCustomFilter(null);
+    setCommandSearchTerm("");
+  }, [setCommandSearchTerm]);
+
   return (
     <SidebarInset className="overflow-x-auto py-8 max-xl:py-0">
       <header className="flex sticky top-0 h-[60px] shrink-0 items-center justify-between gap-2 md:border-b border-none px-4 xl:hidden">
@@ -217,10 +251,12 @@ export default function TalentPool() {
               Keep track of the applicants
             </div>
           </div>
-          <Button variant="default" size="lg" className="px-4 max-md:w-full">
-            <Plus size={24} />
-            <span>Add Talent</span>
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="default" size="lg" className="px-4 max-md:w-full">
+              <Plus size={24} />
+              <span>Add Talent</span>
+            </Button>
+          </div>
         </div>
         <Separator className="mt-4" />
         <div className="h-full flex-1 flex-col space-y-8 pt-6 max-xl:pt-3">
@@ -236,6 +272,15 @@ export default function TalentPool() {
             setSortState={setSortState}
             isLoading={!error && loading && !data}
             error={error}
+            isAIFiltered={!!customFilter}
+            commandBarOpen={commandBarOpen}
+            setCommandBarOpen={setCommandBarOpen}
+            commandSearchTerm={commandSearchTerm}
+            setCommandSearchTerm={setCommandSearchTerm}
+            commandIsProcessing={commandIsProcessing}
+            processSearch={processSearch}
+            clearAIFilter={clearAIFilter}
+            totalResults={totalApplicants}
           />
         </div>
       </div>

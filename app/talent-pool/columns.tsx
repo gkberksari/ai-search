@@ -116,6 +116,39 @@ export const columns: ColumnDef<Applicant>[] = [
     enableSorting: true,
   },
   {
+    accessorKey: "salaryExp",
+    header: ({ column }) => (
+      <DataTableColumnHeader column={column} title="Salary Exp." />
+    ),
+    cell: ({ row }) => {
+      const application = row.original.activeApplication;
+      if (!application.salaryExp) {
+        return <span className="text-muted-foreground">Not specified</span>;
+      }
+
+      const salary = application.salaryExp;
+      const currency = application.salaryExpCurr || "EUR";
+      const period = application.salaryExpPeriod
+        ? application.salaryExpPeriod.toLowerCase()
+        : "monthly";
+
+      const formattedPeriod =
+        period.charAt(0).toUpperCase() + period.slice(1).toLowerCase();
+
+      return (
+        <div className="w-[150px]">
+          <span>{`${salary.toLocaleString()} ${currency}/${formattedPeriod}`}</span>
+        </div>
+      );
+    },
+    sortingFn: (rowA, rowB, columnId) => {
+      const salaryA = rowA.original.activeApplication.salaryExp || 0;
+      const salaryB = rowB.original.activeApplication.salaryExp || 0;
+      return salaryA - salaryB;
+    },
+    enableSorting: true,
+  },
+  {
     accessorKey: "rating",
     header: ({ column }) => (
       <DataTableColumnHeader column={column} title="Rating" />
