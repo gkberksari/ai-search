@@ -100,7 +100,10 @@ export const columns: ColumnDef<Applicant>[] = [
         <div className="flex w-[150px] gap-2 items-center">
           <span className="rounded-full bg-[#36BFFA] w-2 h-2" />
           <Select value={stage.label}>
-            <SelectTrigger className="border-none shadow-none text-xs">
+            <SelectTrigger
+              className="border-none shadow-none text-xs"
+              aria-label={`Application stage: ${stage.label}`}
+            >
               <SelectValue placeholder="Select column" />
             </SelectTrigger>
             <SelectContent>

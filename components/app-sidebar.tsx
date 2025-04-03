@@ -138,7 +138,10 @@ export function AppSidebar() {
               <DropdownMenuTrigger asChild>
                 <SidebarMenuButton>
                   <Avatar>
-                    <AvatarImage src={user.avatar} />
+                    <AvatarImage
+                      src={user.avatar}
+                      alt={`${user.name}'s avatar`}
+                    />
                     <AvatarFallback>CN</AvatarFallback>
                   </Avatar>
                   <div className="grid flex-1 text-left text-sm leading-tight">
