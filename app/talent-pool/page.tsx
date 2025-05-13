@@ -52,7 +52,11 @@ const GET_APPLICANTS = gql`
           salaryExpCurr
           salaryExpPeriod
         }
-        rating
+        rating{
+          myRating
+          totalRatingCount
+          averageRating
+        }
         tags {
           id
           name

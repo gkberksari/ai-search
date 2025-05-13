@@ -4,7 +4,12 @@ export const applicantSchema = z.object({
   id: z.string(),
   firstName: z.string(),
   lastName: z.string(),
-  rating: z.number(),
+  rating: z.object({
+    myRating: z.number().nullable(),
+    totalRatingCount: z.number(),
+    averageRating: z.number().nullable(),
+    __typename: z.string().optional(),
+  }),
   isFavoritedByMe: z.boolean(),
   profilePhotoUrl: z.string().nullable(),
   collaborators: z.object({
@@ -123,7 +128,11 @@ export const applicantDisplaySchema = z.object({
   lastName: z.string(),
   email: z.string(),
   profilePhotoUrl: z.string().nullable(),
-  rating: z.number(),
+  rating: z.object({
+    myRating: z.number().nullable(),
+    totalRatingCount: z.number(),
+    averageRating: z.number().nullable(),
+  }),
   activeApplication: z.object({
     stage: z.object({
       name: z.string(),

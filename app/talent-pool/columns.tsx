@@ -157,11 +157,12 @@ export const columns: ColumnDef<Applicant>[] = [
       <DataTableColumnHeader column={column} title="Rating" />
     ),
     cell: ({ row }) => {
-      const rating = row.original.rating;
+      const rating = row.original.rating.averageRating || 0;
       return <RatingStars rating={rating} />;
     },
     filterFn: (row, id, value) => {
-      return value.includes(row.original.rating.toString());
+      const rating = row.original.rating.averageRating || 0;
+      return value.includes(rating.toString());
     },
     enableSorting: true,
   },
