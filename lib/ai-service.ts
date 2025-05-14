@@ -101,6 +101,13 @@ export async function generateFilterFromPrompt(
       - Use filterVariable with the stage ID or name
       - Available stages: "Sourced", "Applied", "Contacted", "Interview", "Evaluation", "Offer", "Hired", "Rejected"
       - For example, to filter candidates in the "Hired" stage, use filterVariable="clnvoqb87044mmq3wke7woqqq" or the appropriate stage ID
+      - For Interview stage, use filterVariable="clnvoqb87044jmq3we22j7ovg"
+      - For Evaluation stage, use filterVariable="clnvoqb87044kmq3wthrs908z"
+      - For Offer stage, use filterVariable="clnvoqb87044lmq3w5al2s9d6"
+      - For Rejected stage, use filterVariable="clnvoqb87044nmq3wttmf5144"
+      - For Contacted stage, use filterVariable="clnvoqb87044imq3wudgbj1xv"
+      - For Applied stage, use filterVariable="clnvoqb87044hmq3w9248rshm"
+      - For Sourced stage, use filterVariable="clooapkdz000dn01scupqzr3h"
 
       For example, for "Candidates from Germany with salary above 2000 Euro per month", 
       the filter would include these parameters:
