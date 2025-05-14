@@ -29,7 +29,7 @@ const model = genAI.getGenerativeModel({
   ],
 });
 
-const STAGE_ID_MAPPING = {
+const STAGE_ID_MAPPING: Record<string, string> = {
   "sourced": "clooapkdz000dn01scupqzr3h",
   "applied": "clnvoqb87044hmq3w9248rshm", 
   "contacted": "clnvoqb87044imq3wudgbj1xv",
@@ -65,7 +65,9 @@ class LRUCache<K, V> {
     }
     else if (this.cache.size >= this.maxSize) {
       const firstKey = this.cache.keys().next().value;
-      this.cache.delete(firstKey);
+      if (firstKey !== undefined) {
+        this.cache.delete(firstKey);
+      }
     }
     this.cache.set(key, value);
   }
