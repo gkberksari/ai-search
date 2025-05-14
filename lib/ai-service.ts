@@ -65,7 +65,7 @@ export async function generateFilterFromPrompt(
         "filterParameters": [
           {
             "logicalOperator": "AND", // Can be AND, OR
-            "name": "fieldName", // Supported fields: salary, fullName, email, address, etc.
+            "name": "fieldName", // Supported fields: salary, fullName, email, address, stage, etc.
             "operator": "operatorType", // Can be: equals, contains, between, gte, lte
             "filterVariable": "value1",
             "filterVariable2": "value2", // Only needed for 'between' operator
@@ -95,6 +95,13 @@ export async function generateFilterFromPrompt(
       - For minimums, use operator="gte" with filterVariable
       - For maximums, use operator="lte" with filterVariable
 
+      For application stage filters:
+      - Use name="stage"
+      - Use operator="equals"
+      - Use filterVariable with the stage ID or name
+      - Available stages: "Sourced", "Applied", "Contacted", "Interview", "Evaluation", "Offer", "Hired", "Rejected"
+      - For example, to filter candidates in the "Hired" stage, use filterVariable="clnvoqb87044mmq3wke7woqqq" or the appropriate stage ID
+
       For example, for "Candidates from Germany with salary above 2000 Euro per month", 
       the filter would include these parameters:
       [
@@ -111,6 +118,16 @@ export async function generateFilterFromPrompt(
           "filterVariable": "2000",
           "salaryCurr": "EUR",
           "salaryPeriod": "MONTHLY"
+        }
+      ]
+
+      For "Candidates in hired stage", the filter would be:
+      [
+        {
+          "logicalOperator": "AND",
+          "name": "stage",
+          "operator": "equals", 
+          "filterVariable": "clnvoqb87044mmq3wke7woqqq"
         }
       ]
 

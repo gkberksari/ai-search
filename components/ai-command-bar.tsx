@@ -14,6 +14,7 @@ import {
 const examples = [
   "Candidates with a salary expectation between 1,000 and 1,500 Euro/month",
   "Find all applicants from Germany with Salary expectation above 2,000 Euro/month",
+  "Find all applicants in hired stage",
 ];
 
 type AICommandBarProps = {
