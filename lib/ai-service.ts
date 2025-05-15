@@ -40,6 +40,12 @@ const STAGE_ID_MAPPING: Record<string, string> = {
   "rejected": "clnvoqb87044nmq3wttmf5144"
 };
 
+const JOB_TITLE_ID_MAPPING: Record<string, string> = {
+  "sales associate": "cm2n4igtn001s1vvg4gl1onw3",
+  "marketing manager": "cm2n4igsm000w1vvgpxaoz7s7"
+  // Diğer pozisyonları buraya ekleyeceğiz...
+};
+
 const CACHE_MAX_SIZE = 50;
 
 class LRUCache<K, V> {
@@ -120,44 +126,53 @@ function normalizePrompt(prompt: string): string {
 function normalizeFilterParameters(params: FilterParameter[]): FilterParameter[] {
   return params.map(param => {
     const normalizedParam = { ...param };
-    
-   
+
     normalizedParam.name = param.name.toLowerCase();
-    
-    
+
     normalizedParam.operator = param.operator.toLowerCase();
-    
-    
+
+
     if (normalizedParam.name === "stage" && normalizedParam.operator === "equals") {
       const stageName = param.filterVariable.toLowerCase();
       if (STAGE_ID_MAPPING[stageName]) {
         normalizedParam.filterVariable = STAGE_ID_MAPPING[stageName];
       } else {
         console.warn(`Unknown stage name: ${param.filterVariable}`);
-        
+
         normalizedParam.filterVariable = STAGE_ID_MAPPING["sourced"];
       }
     }
-    
-   
+
+    if ((normalizedParam.name === "jobtitle" || normalizedParam.name === "job" || 
+      normalizedParam.name === "position" || normalizedParam.name === "jobrole") && 
+     normalizedParam.operator === "equals") {
+   const jobTitle = (normalizedParam.filterVariable || "").toLowerCase();
+   if (jobTitle in JOB_TITLE_ID_MAPPING) {
+     normalizedParam.name = "jobTitle";
+     normalizedParam.filterVariable = JOB_TITLE_ID_MAPPING[jobTitle];
+   } else {
+     console.warn(`Unknown job title: ${normalizedParam.filterVariable}`);
+   }
+ }
+
     if (normalizedParam.name === "salary") {
       normalizedParam.filterVariable = param.filterVariable.replace(/[^\d.,]/g, '').replace(',', '.');
-      
+
       if (param.filterVariable2) {
         normalizedParam.filterVariable2 = param.filterVariable2.replace(/[^\d.,]/g, '').replace(',', '.');
       }
-      
+
       normalizedParam.salaryCurr = param.salaryCurr?.toUpperCase() || "EUR";
       normalizedParam.salaryPeriod = param.salaryPeriod?.toUpperCase() || "MONTHLY";
     }
-    
+
     if (normalizedParam.name === "address" || normalizedParam.name === "country") {
       normalizedParam.filterVariable = param.filterVariable
         .split(' ')
         .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
         .join(' ');
     }
-    
+
     return normalizedParam;
   });
 }
@@ -254,6 +269,23 @@ export async function generateFilterFromPrompt(
         }
       ]
 
+      For job title filters:
+      - Use name="jobTitle"
+      - Use operator="equals"
+      - Use filterVariable with the job title NAME (not ID)
+      - Available job titles: "Sales Associate", "Marketing Manager", etc.
+
+      For example, for "Find candidates who applied for Marketing Manager position", 
+      the filter would be:
+      [
+        {
+          "logicalOperator": "AND",
+          "name": "jobTitle",
+          "operator": "equals", 
+          "filterVariable": "Marketing Manager"
+        }
+      ]
+
       Return ONLY the structured JSON without any explanations or preamble.
     `);
 
@@ -312,6 +344,11 @@ export function explainFilter(filter: QueryFilter): string {
     reverseStageMapping[id] = name;
   });
 
+  const reverseJobTitleMapping: Record<string, string> = {};
+  Object.entries(JOB_TITLE_ID_MAPPING).forEach(([name, id]) => {
+    reverseJobTitleMapping[id] = name;
+  });
+
   const explanations = filter.filterParameters.map((param, index) => {
     let explanation = index === 0 ? "Finding candidates " : `${param.logicalOperator} `;
     
@@ -319,6 +356,10 @@ export function explainFilter(filter: QueryFilter): string {
       const stageName = reverseStageMapping[param.filterVariable] || param.filterVariable;
       explanation += `in the "${stageName}" stage`;
     } 
+    else if (param.name === "jobTitle" && param.operator === "equals") {
+      const jobTitle = reverseJobTitleMapping[param.filterVariable] || param.filterVariable;
+      explanation += `who applied for "${jobTitle}" position`;
+    }
     else if (param.name === "salary") {
       const currency = param.salaryCurr || "EUR";
       const period = param.salaryPeriod?.toLowerCase() || "monthly";
