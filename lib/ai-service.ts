@@ -131,29 +131,52 @@ function normalizeFilterParameters(params: FilterParameter[]): FilterParameter[]
 
     normalizedParam.operator = param.operator.toLowerCase();
 
+      if (normalizedParam.name === "stage" && normalizedParam.operator === "equals") {
+        const stageName = param.filterVariable.toLowerCase();
+        if (STAGE_ID_MAPPING[stageName]) {
+          normalizedParam.filterVariable = STAGE_ID_MAPPING[stageName];
+        } else {
+          console.warn(`Unknown stage name: ${param.filterVariable}`);
 
-    if (normalizedParam.name === "stage" && normalizedParam.operator === "equals") {
-      const stageName = param.filterVariable.toLowerCase();
-      if (STAGE_ID_MAPPING[stageName]) {
-        normalizedParam.filterVariable = STAGE_ID_MAPPING[stageName];
-      } else {
-        console.warn(`Unknown stage name: ${param.filterVariable}`);
+          normalizedParam.filterVariable = STAGE_ID_MAPPING["sourced"];
+        }
+      }
 
-        normalizedParam.filterVariable = STAGE_ID_MAPPING["sourced"];
+      if ((normalizedParam.name === "jobtitle" || normalizedParam.name === "job" || 
+        normalizedParam.name === "position" || normalizedParam.name === "jobrole") && 
+      normalizedParam.operator === "equals") {
+    const jobTitle = (normalizedParam.filterVariable || "").toLowerCase();
+    if (jobTitle in JOB_TITLE_ID_MAPPING) {
+      normalizedParam.name = "jobTitle";
+      normalizedParam.filterVariable = JOB_TITLE_ID_MAPPING[jobTitle];
+    } else {
+      console.warn(`Unknown job title: ${normalizedParam.filterVariable}`);
+    }
+  }
+
+      if (normalizedParam.name === "gender" ||
+        normalizedParam.name === "sex" ||
+        normalizedParam.name === "genders") {
+
+      normalizedParam.name = "gender";
+
+      const genderValue = (normalizedParam.filterVariable || "").toLowerCase();
+
+      if (genderValue.includes("kad") || genderValue.includes("bay") ||
+          genderValue.includes("kız") || genderValue.includes("kiz") ||
+          genderValue.includes("female") || genderValue.includes("woman") ||
+          genderValue.includes("f")) {
+        normalizedParam.filterVariable = "Female";
+      }
+      else if (genderValue.includes("erk") || genderValue.includes("bay") ||
+              genderValue.includes("male") || genderValue.includes("man") ||
+              genderValue.includes("m")) {
+        normalizedParam.filterVariable = "Male";
+      }
+      else {
+        console.warn(`Unknown gender value: ${normalizedParam.filterVariable}`);
       }
     }
-
-    if ((normalizedParam.name === "jobtitle" || normalizedParam.name === "job" || 
-      normalizedParam.name === "position" || normalizedParam.name === "jobrole") && 
-     normalizedParam.operator === "equals") {
-   const jobTitle = (normalizedParam.filterVariable || "").toLowerCase();
-   if (jobTitle in JOB_TITLE_ID_MAPPING) {
-     normalizedParam.name = "jobTitle";
-     normalizedParam.filterVariable = JOB_TITLE_ID_MAPPING[jobTitle];
-   } else {
-     console.warn(`Unknown job title: ${normalizedParam.filterVariable}`);
-   }
- }
 
     if (normalizedParam.name === "salary") {
       normalizedParam.filterVariable = param.filterVariable.replace(/[^\d.,]/g, '').replace(',', '.');
@@ -283,6 +306,21 @@ export async function generateFilterFromPrompt(
           "name": "jobTitle",
           "operator": "equals", 
           "filterVariable": "Marketing Manager"
+        }
+      ]
+
+      For gender filters:
+      - Use name="gender"
+      - Use operator="equals"
+      - Use filterVariable with either "Male" or "Female"
+
+      For example, for "Show me female candidates", the filter would be:
+      [
+        {
+          "logicalOperator": "AND",
+          "name": "gender",
+          "operator": "equals",
+          "filterVariable": "Female"
         }
       ]
 

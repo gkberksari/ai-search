@@ -16,7 +16,7 @@ const examples = [
   "Find all applicants from Germany with Salary expectation above 2,000 Euro/month",
   "Find all applicants in hired stage",
   "Show me candidates who applied for Sales Associate position",
-  "Find Marketing Manager applicants with rating above 4",
+  "Show me female candidates",
 ];
 
 type AICommandBarProps = {
