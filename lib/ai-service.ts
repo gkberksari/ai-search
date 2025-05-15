@@ -178,6 +178,28 @@ function normalizeFilterParameters(params: FilterParameter[]): FilterParameter[]
       }
     }
 
+    if (normalizedParam.name === "experience" || 
+      normalizedParam.name === "exp" || 
+      normalizedParam.name === "experienceyears" || 
+      normalizedParam.name === "yearsofexperience") {
+    
+    normalizedParam.name = "experience";
+    
+    normalizedParam.filterVariable = (normalizedParam.filterVariable || "")
+      .replace(/[^\d.,]/g, '')
+      .replace(/,/g, '.');
+    
+    if (normalizedParam.filterVariable2) {
+      normalizedParam.filterVariable2 = normalizedParam.filterVariable2
+        .replace(/[^\d.,]/g, '')
+        .replace(/,/g, '.');
+    }
+    
+    if (!normalizedParam.operator || normalizedParam.operator === "") {
+      normalizedParam.operator = "equals";
+    }
+  }
+
     if (normalizedParam.name === "salary") {
       normalizedParam.filterVariable = param.filterVariable.replace(/[^\d.,]/g, '').replace(',', '.');
 
@@ -217,11 +239,11 @@ export async function generateFilterFromPrompt(
 
   try {
     console.log("Generating filter for prompt:", normalizedPrompt);
-    
+
     const result = await model.generateContent(`
       Given the following prompt from a user, generate a structured query filter for a GraphQL API.
       Prompt: "${prompt}"
-      
+
       Return a valid JSON object that follows this structure:
       {
         "filterParameters": [
@@ -321,6 +343,43 @@ export async function generateFilterFromPrompt(
           "name": "gender",
           "operator": "equals",
           "filterVariable": "Female"
+        }
+      ]
+
+      For experience filters:
+      - Use name="experience" 
+      - Use appropriate operator: "equals", "gte" (greater than or equal), "lte" (less than or equal), or "between"
+      - Use filterVariable with the number of years of experience
+      - For "between" operator, use both filterVariable and filterVariable2
+      
+      For example, for "Candidates with exactly 5 years of experience", the filter would be:
+      [
+        {
+          "logicalOperator": "AND",
+          "name": "experience",
+          "operator": "equals", 
+          "filterVariable": "5"
+        }
+      ]
+      
+      For "Candidates with more than 3 years of experience", the filter would be:
+      [
+        {
+          "logicalOperator": "AND",
+          "name": "experience",
+          "operator": "gte", 
+          "filterVariable": "3"
+        }
+      ]
+      
+      For "Candidates with 2-5 years of experience", the filter would be:
+      [
+        {
+          "logicalOperator": "AND",
+          "name": "experience",
+          "operator": "between", 
+          "filterVariable": "2",
+          "filterVariable2": "5"
         }
       ]
 

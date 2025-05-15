@@ -17,6 +17,8 @@ const examples = [
   "Find all applicants in hired stage",
   "Show me candidates who applied for Sales Associate position",
   "Show me female candidates",
+  "Candidates with 1+ years of experience",
+  "Find applicants with 2-5 years of experience",
 ];
 
 type AICommandBarProps = {
