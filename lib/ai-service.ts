@@ -457,6 +457,32 @@ export function explainFilter(filter: QueryFilter): string {
       const jobTitle = reverseJobTitleMapping[param.filterVariable] || param.filterVariable;
       explanation += `who applied for "${jobTitle}" position`;
     }
+    else if (param.name === "gender" && param.operator === "equals") {
+      if (param.filterVariable === "Female") {
+        explanation += "who are female";
+      } else if (param.filterVariable === "Male") {
+        explanation += "who are male";
+      } else {
+        explanation += `with gender ${param.filterVariable}`;
+      }
+    }
+    else if (param.name === "experience") {
+      if (param.operator === "equals") {
+        explanation += `with exactly ${param.filterVariable} year${param.filterVariable === "1" ? "" : "s"} of experience`;
+      } 
+      else if (param.operator === "gte") {
+        explanation += `with at least ${param.filterVariable} year${param.filterVariable === "1" ? "" : "s"} of experience`;
+      } 
+      else if (param.operator === "lte") {
+        explanation += `with at most ${param.filterVariable} year${param.filterVariable === "1" ? "" : "s"} of experience`;
+      } 
+      else if (param.operator === "between" && param.filterVariable2) {
+        explanation += `with ${param.filterVariable}-${param.filterVariable2} years of experience`;
+      }
+      else {
+        explanation += `with experience ${param.operator} ${param.filterVariable}`;
+      }
+    }
     else if (param.name === "salary") {
       const currency = param.salaryCurr || "EUR";
       const period = param.salaryPeriod?.toLowerCase() || "monthly";
