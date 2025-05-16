@@ -93,6 +93,19 @@ const GET_REJECTED_REASONS = gql`
   }
 `;
 
+const GET_UNIVERSITIES = gql`
+  query getAllUniversities($page: Int!, $filter: UniversityFilter) {
+    getAllUniversities(page: $page, filter: $filter) {
+      total
+      pages
+      universities {
+        id
+        name
+      }
+    }
+  }
+`;
+
 // Önbellek için maksimum öğe sayısı
 const CACHE_MAX_SIZE = 50;
 
@@ -102,7 +115,8 @@ const USER_DEFINED_FIELDS = [
   "jobtitle", "job", "position", "role", "pozisyon", "görev", "iş", "title",
   "tag", "etiket", "label", 
   "skill", "beceri", "yetenek", "ability", "skills",
-  "rejectedreason", "rejectionreason", "reason"
+  "rejectedreason", "rejectionreason", "reason",
+  "university", "university", "school", "college", "üniversite", "okul"
 ];
 
 // Kullanıcı tanımlı alanları çekmek için cache yapısı
@@ -112,6 +126,7 @@ interface UserDefinedDataCache {
   tags: Record<string, string>; // name -> id
   skills: Record<string, string>; // name -> id
   rejectedReasons: Record<string, string>; // name -> id
+  universities: Record<string, string>; // name -> id
   lastFetched: number;
 }
 
@@ -211,6 +226,57 @@ function normalizePrompt(prompt: string): string {
 }
 
 /**
+ * Üniversite verilerini tüm sayfalarından çekmek için yardımcı fonksiyon
+ */
+async function fetchAllUniversities(client: ApolloClient<any>): Promise<Array<{id: string, name: string}>> {
+  const firstPageResult = await client.query({
+    query: GET_UNIVERSITIES,
+    variables: { 
+      page: 1,
+      filter: { query: "" } 
+    }
+  });
+  
+  const totalPages = firstPageResult.data.getAllUniversities.pages;
+  const firstPageUnis = firstPageResult.data.getAllUniversities.universities;
+  
+  // Eğer sadece bir sayfa varsa, doğrudan döndür
+  if (totalPages <= 1) {
+    return firstPageUnis;
+  }
+  
+  // En fazla ilk 5 sayfayı çek (50 üniversite)
+  // Not: Tüm sayfaları çekmek API'ye fazla yük getirebilir
+  const maxPages = Math.min(totalPages, 5);
+  
+  // Diğer sayfaları çek (2. sayfadan başla)
+  const otherPagesPromises = [];
+  for (let page = 2; page <= maxPages; page++) {
+    otherPagesPromises.push(
+      client.query({
+        query: GET_UNIVERSITIES,
+        variables: { 
+          page: page,
+          filter: { query: "" } 
+        }
+      })
+    );
+  }
+  
+  // Tüm sayfaları paralel olarak çek
+  const otherPagesResults = await Promise.all(otherPagesPromises);
+  
+  // Sonuçları birleştir
+  const allUniversities = [...firstPageUnis];
+  
+  for (const result of otherPagesResults) {
+    allUniversities.push(...result.data.getAllUniversities.universities);
+  }
+  
+  return allUniversities;
+}
+
+/**
  * Kullanıcı tanımlı verileri çek ve önbelleğe al
  */
 export async function fetchUserDefinedData(): Promise<UserDefinedDataCache> {
@@ -224,7 +290,7 @@ export async function fetchUserDefinedData(): Promise<UserDefinedDataCache> {
   const client = getApolloClient();
   
   try {
-    // Tüm kullanıcı tanımlı verileri paralel olarak çek
+    // Temel verileri paralel olarak çek
     const [stagesRes, jobListingsRes, tagsRes, skillsRes, rejectedReasonsRes] = await Promise.all([
       client.query({ query: GET_STAGES }),
       client.query({ query: GET_JOB_LISTINGS }),
@@ -232,6 +298,9 @@ export async function fetchUserDefinedData(): Promise<UserDefinedDataCache> {
       client.query({ query: GET_SKILLS }),
       client.query({ query: GET_REJECTED_REASONS })
     ]);
+    
+    // Üniversiteleri ayrıca çek (birden çok sayfa olabilir)
+    const universities = await fetchAllUniversities(client);
     
     // İsim -> ID eşleştirme map'leri oluştur
     const stagesMap: Record<string, string> = {};
@@ -259,6 +328,11 @@ export async function fetchUserDefinedData(): Promise<UserDefinedDataCache> {
       rejectedReasonsMap[reason.name.toLowerCase()] = reason.id;
     });
     
+    const universitiesMap: Record<string, string> = {};
+    universities.forEach((uni: {id: string, name: string}) => {
+      universitiesMap[uni.name.toLowerCase()] = uni.id;
+    });
+    
     // Önbelleği güncelle
     userDefinedDataCache = {
       stages: stagesMap,
@@ -266,6 +340,7 @@ export async function fetchUserDefinedData(): Promise<UserDefinedDataCache> {
       tags: tagsMap,
       skills: skillsMap,
       rejectedReasons: rejectedReasonsMap,
+      universities: universitiesMap,
       lastFetched: Date.now()
     };
     
@@ -274,7 +349,8 @@ export async function fetchUserDefinedData(): Promise<UserDefinedDataCache> {
       jobListings: Object.keys(jobListingsMap).length,
       tags: Object.keys(tagsMap).length,
       skills: Object.keys(skillsMap).length,
-      rejectedReasons: Object.keys(rejectedReasonsMap).length
+      rejectedReasons: Object.keys(rejectedReasonsMap).length,
+      universities: Object.keys(universitiesMap).length
     });
     
     return userDefinedDataCache;
@@ -291,6 +367,7 @@ export async function fetchUserDefinedData(): Promise<UserDefinedDataCache> {
       tags: {},
       skills: {},
       rejectedReasons: {},
+      universities: {},
       lastFetched: Date.now()
     };
   }
@@ -324,6 +401,13 @@ export async function resolveUserDefinedField(fieldType: string, fieldValue: str
     else if (fieldType.includes('reason') || 
              fieldType.includes('rejection')) {
       return cache.rejectedReasons[normalizedValue] || null;
+    }
+    else if (fieldType.includes('university') || 
+             fieldType.includes('school') || 
+             fieldType.includes('college') ||
+             fieldType.includes('üniversite') ||
+             fieldType.includes('okul')) {
+      return cache.universities[normalizedValue] || null;
     }
     
     return null;
@@ -512,7 +596,8 @@ export async function generateFilterFromPrompt(
       - For JOB TITLE filters: Use name="jobTitle", operator="equals", and filterVariable with the EXACT NAME (e.g., "Sales Associate")
       - For TAG filters: Use name="tag", operator="equals", and filterVariable with the EXACT NAME of the tag
       - For SKILL filters: Use name="skill", operator="equals", and filterVariable with the EXACT NAME of the skill
-      
+      - For UNIVERSITY filters: Use name="university", operator="equals", and filterVariable with the EXACT NAME of the university (e.g., "Marmara University")
+      - For REASON filters: Use name="reason", operator="equals", and filterVariable with the EXACT NAME of the reason (e.g., "Not a good fit", "No response")
       Return ONLY the structured JSON without any explanations or preamble.
     `);
 
@@ -582,6 +667,11 @@ export async function generateFilterFromPrompt(
                 }
                 else if (fieldType.includes('skill')) {
                   newParam.name = "skill";
+                }
+                else if (fieldType.includes('university') || 
+                         fieldType.includes('school') || 
+                         fieldType.includes('college')) {
+                  newParam.name = "university";
                 }
                 
                 resolvedParams.push(newParam);
@@ -708,6 +798,9 @@ export function explainFilter(filter: QueryFilter): string {
       }
       else if (param.name === "skill") {
         partExplanation += `having skill with ID ${param.filterVariable}`;
+      }
+      else if (param.name === "university") {
+        partExplanation += `from university with ID ${param.filterVariable}`;
       }
       else {
         partExplanation += `where ${param.name} ${param.operator} ${param.filterVariable}`;
