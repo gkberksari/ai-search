@@ -3,6 +3,7 @@ import {
   HarmBlockThreshold,
   HarmCategory,
 } from "@google/generative-ai";
+import { ApolloClient, InMemoryCache, gql } from '@apollo/client';
 
 const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY || "";
 
@@ -29,25 +30,92 @@ const model = genAI.getGenerativeModel({
   ],
 });
 
-const STAGE_ID_MAPPING: Record<string, string> = {
-  "sourced": "clooapkdz000dn01scupqzr3h",
-  "applied": "clnvoqb87044hmq3w9248rshm", 
-  "contacted": "clnvoqb87044imq3wudgbj1xv",
-  "interview": "clnvoqb87044jmq3we22j7ovg",
-  "evaluation": "clnvoqb87044kmq3wthrs908z",
-  "offer": "clnvoqb87044lmq3w5al2s9d6",
-  "hired": "clnvoqb87044mmq3wke7woqqq",
-  "rejected": "clnvoqb87044nmq3wttmf5144"
-};
+// Apollo Client örneği
+let apolloClient: ApolloClient<any> | null = null;
 
-const JOB_TITLE_ID_MAPPING: Record<string, string> = {
-  "sales associate": "cm2n4igtn001s1vvg4gl1onw3",
-  "marketing manager": "cm2n4igsm000w1vvgpxaoz7s7"
-  // Diğer pozisyonları buraya ekleyeceğiz...
-};
+// Apollo Client'ı başlat
+function getApolloClient() {
+  if (!apolloClient) {
+    apolloClient = new ApolloClient({
+      uri: 'https://staging-api.hrpanda.co/graphql',
+      cache: new InMemoryCache(),
+      headers: {
+        Authorization: `Bearer ${process.env.NEXT_PUBLIC_API_TOKEN}`,
+      },
+    });
+  }
+  return apolloClient;
+}
 
+// GraphQL sorguları
+const GET_STAGES = gql`
+  query GetStages {
+    getStages {
+      id
+      name
+    }
+  }
+`;
+
+const GET_JOB_LISTINGS = gql`
+  query GetJobListings {
+    getMyAllJobListings {
+      id
+      name
+    }
+  }
+`;
+
+const GET_TAGS = gql`
+  query GetTags {
+    getTags {
+      id
+      name
+    }
+  }
+`;
+
+const GET_SKILLS = gql`
+  query GetSkills {
+    getSkills {
+      id
+      name
+    }
+  }
+`;
+
+const GET_REJECTED_REASONS = gql`
+  query GetRejectedReasons {
+    getRejectedReasons {
+      id
+      name
+    }
+  }
+`;
+
+// Önbellek için maksimum öğe sayısı
 const CACHE_MAX_SIZE = 50;
 
+// Kullanıcı tanımlı alanları belirle
+const USER_DEFINED_FIELDS = [
+  "stage", "stag", "aşama", "step", "phase",
+  "jobtitle", "job", "position", "role", "pozisyon", "görev", "iş", "title",
+  "tag", "etiket", "label", 
+  "skill", "beceri", "yetenek", "ability", "skills",
+  "rejectedreason", "rejectionreason", "reason"
+];
+
+// Kullanıcı tanımlı alanları çekmek için cache yapısı
+interface UserDefinedDataCache {
+  stages: Record<string, string>; // name -> id
+  jobListings: Record<string, string>; // name -> id
+  tags: Record<string, string>; // name -> id
+  skills: Record<string, string>; // name -> id
+  rejectedReasons: Record<string, string>; // name -> id
+  lastFetched: number;
+}
+
+// Önbellek için LRU (En Az Kullanılan) Map
 class LRUCache<K, V> {
   private cache = new Map<K, V>();
   private maxSize: number;
@@ -59,6 +127,7 @@ class LRUCache<K, V> {
   get(key: K): V | undefined {
     const item = this.cache.get(key);
     if (item) {
+      // Kullanıldığı için yeniden ekleyerek en son kullanılan olarak işaretle
       this.cache.delete(key);
       this.cache.set(key, item);
     }
@@ -66,15 +135,18 @@ class LRUCache<K, V> {
   }
 
   set(key: K, value: V): void {
+    // Eğer anahtar zaten varsa, önce onu sil
     if (this.cache.has(key)) {
       this.cache.delete(key);
     }
+    // Eğer cache doluysa, en eski öğeyi (ilk eklenen) sil
     else if (this.cache.size >= this.maxSize) {
       const firstKey = this.cache.keys().next().value;
       if (firstKey !== undefined) {
         this.cache.delete(firstKey);
       }
     }
+    // Yeni öğeyi ekle
     this.cache.set(key, value);
   }
 
@@ -87,7 +159,14 @@ class LRUCache<K, V> {
   }
 }
 
+// Prompt önbelleği
 const promptCache = new LRUCache<string, QueryFilter>(CACHE_MAX_SIZE);
+
+// Önbellek süresi (1 saat)
+const CACHE_TTL = 60 * 60 * 1000;
+
+// Global önbellek nesnesi
+let userDefinedDataCache: UserDefinedDataCache | null = null;
 
 type FilterParameter = {
   logicalOperator: string;
@@ -108,83 +187,207 @@ type QueryFilter = {
 };
 
 /**
- * @param prompt 
- * @returns 
+ * Bir alanın kullanıcı tanımlı olup olmadığını kontrol eder
+ */
+function isUserDefinedField(fieldName: string): boolean {
+  if (!fieldName) return false;
+  
+  const lowerFieldName = fieldName.toLowerCase();
+  
+  return USER_DEFINED_FIELDS.some(field => 
+    lowerFieldName.includes(field.toLowerCase()));
+}
+
+/**
+ * Kullanıcı girdisini normalize eder
+ * @param prompt Kullanıcı sorgusu
+ * @returns Normalize edilmiş sorgu
  */
 function normalizePrompt(prompt: string): string {
   return prompt
     .trim()
     .toLowerCase()
-    .replace(/\s+/g, ' '); 
+    .replace(/\s+/g, ' '); // Fazla boşlukları temizle
 }
 
 /**
- * 
- * @param params 
- * @returns
+ * Kullanıcı tanımlı verileri çek ve önbelleğe al
  */
-function normalizeFilterParameters(params: FilterParameter[]): FilterParameter[] {
-  return params.map(param => {
-    const normalizedParam = { ...param };
+export async function fetchUserDefinedData(): Promise<UserDefinedDataCache> {
+  // Eğer güncel önbellek varsa, onu kullan
+  if (userDefinedDataCache && 
+      (Date.now() - userDefinedDataCache.lastFetched) < CACHE_TTL) {
+    return userDefinedDataCache;
+  }
+  
+  // Apollo Client'ı al
+  const client = getApolloClient();
+  
+  try {
+    // Tüm kullanıcı tanımlı verileri paralel olarak çek
+    const [stagesRes, jobListingsRes, tagsRes, skillsRes, rejectedReasonsRes] = await Promise.all([
+      client.query({ query: GET_STAGES }),
+      client.query({ query: GET_JOB_LISTINGS }),
+      client.query({ query: GET_TAGS }),
+      client.query({ query: GET_SKILLS }),
+      client.query({ query: GET_REJECTED_REASONS })
+    ]);
+    
+    // İsim -> ID eşleştirme map'leri oluştur
+    const stagesMap: Record<string, string> = {};
+    stagesRes.data.getStages.forEach((stage: {id: string, name: string}) => {
+      stagesMap[stage.name.toLowerCase()] = stage.id;
+    });
+    
+    const jobListingsMap: Record<string, string> = {};
+    jobListingsRes.data.getMyAllJobListings.forEach((job: {id: string, name: string}) => {
+      jobListingsMap[job.name.toLowerCase()] = job.id;
+    });
+    
+    const tagsMap: Record<string, string> = {};
+    tagsRes.data.getTags.forEach((tag: {id: string, name: string}) => {
+      tagsMap[tag.name.toLowerCase()] = tag.id;
+    });
+    
+    const skillsMap: Record<string, string> = {};
+    skillsRes.data.getSkills.forEach((skill: {id: string, name: string}) => {
+      skillsMap[skill.name.toLowerCase()] = skill.id;
+    });
+    
+    const rejectedReasonsMap: Record<string, string> = {};
+    rejectedReasonsRes.data.getRejectedReasons.forEach((reason: {id: string, name: string}) => {
+      rejectedReasonsMap[reason.name.toLowerCase()] = reason.id;
+    });
+    
+    // Önbelleği güncelle
+    userDefinedDataCache = {
+      stages: stagesMap,
+      jobListings: jobListingsMap,
+      tags: tagsMap,
+      skills: skillsMap,
+      rejectedReasons: rejectedReasonsMap,
+      lastFetched: Date.now()
+    };
+    
+    console.log("User defined data fetched:", {
+      stages: Object.keys(stagesMap).length,
+      jobListings: Object.keys(jobListingsMap).length,
+      tags: Object.keys(tagsMap).length,
+      skills: Object.keys(skillsMap).length,
+      rejectedReasons: Object.keys(rejectedReasonsMap).length
+    });
+    
+    return userDefinedDataCache;
+  } catch (error) {
+    console.error("Error fetching user defined data:", error);
+    // Eğer önceki önbellek varsa, hatada bile onu kullan
+    if (userDefinedDataCache) {
+      return userDefinedDataCache;
+    }
+    // Yoksa boş bir önbellek döndür
+    return {
+      stages: {},
+      jobListings: {},
+      tags: {},
+      skills: {},
+      rejectedReasons: {},
+      lastFetched: Date.now()
+    };
+  }
+}
 
-    normalizedParam.name = param.name.toLowerCase();
+/**
+ * İsim -> ID eşleştirmesi yap
+ */
+export async function resolveUserDefinedField(fieldType: string, fieldValue: string): Promise<string | null> {
+  try {
+    const cache = await fetchUserDefinedData();
+    
+    const normalizedValue = fieldValue.toLowerCase();
+    
+    // Alan tipine göre doğru map'i seç
+    if (fieldType.includes('stage')) {
+      return cache.stages[normalizedValue] || null;
+    }
+    else if (fieldType.includes('job') || 
+             fieldType.includes('title') || 
+             fieldType.includes('position') ||
+             fieldType.includes('listing')) {
+      return cache.jobListings[normalizedValue] || null;
+    }
+    else if (fieldType.includes('tag')) {
+      return cache.tags[normalizedValue] || null;
+    }
+    else if (fieldType.includes('skill')) {
+      return cache.skills[normalizedValue] || null;
+    }
+    else if (fieldType.includes('reason') || 
+             fieldType.includes('rejection')) {
+      return cache.rejectedReasons[normalizedValue] || null;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error(`Error resolving user defined field: ${fieldType} - ${fieldValue}`, error);
+    return null;
+  }
+}
 
-    normalizedParam.operator = param.operator.toLowerCase();
-
-      if (normalizedParam.name === "stage" && normalizedParam.operator === "equals") {
-        const stageName = param.filterVariable.toLowerCase();
-        if (STAGE_ID_MAPPING[stageName]) {
-          normalizedParam.filterVariable = STAGE_ID_MAPPING[stageName];
-        } else {
-          console.warn(`Unknown stage name: ${param.filterVariable}`);
-
-          normalizedParam.filterVariable = STAGE_ID_MAPPING["sourced"];
-        }
-      }
-
-      if ((normalizedParam.name === "jobtitle" || normalizedParam.name === "job" || 
-        normalizedParam.name === "position" || normalizedParam.name === "jobrole") && 
-      normalizedParam.operator === "equals") {
-    const jobTitle = (normalizedParam.filterVariable || "").toLowerCase();
-    if (jobTitle in JOB_TITLE_ID_MAPPING) {
-      normalizedParam.name = "jobTitle";
-      normalizedParam.filterVariable = JOB_TITLE_ID_MAPPING[jobTitle];
-    } else {
-      console.warn(`Unknown job title: ${normalizedParam.filterVariable}`);
+/**
+ * Tek bir filtreyi normalize eder
+ */
+function normalizeFilterParameter(param: FilterParameter): FilterParameter {
+  const normalizedParam = { ...param };
+  
+  // Alan adını küçük harfe dönüştür
+  normalizedParam.name = normalizedParam.name.toLowerCase();
+  
+  // Operatörleri düzenli hale getir
+  normalizedParam.operator = normalizedParam.operator.toLowerCase();
+  
+  // Cinsiyet filtresi normalizasyonu
+  if (normalizedParam.name === "gender" || 
+      normalizedParam.name === "sex" || 
+      normalizedParam.name === "genders") {
+    
+    normalizedParam.name = "gender"; // API'nin beklediği kesin alan adı
+    
+    // Cinsiyet değerini normalleştir
+    const genderValue = (normalizedParam.filterVariable || "").toLowerCase();
+    
+    // Farklı ifadeleri destekle: kadın, bayan, kız, female, woman...
+    if (genderValue.includes("kad") || genderValue.includes("bay") || 
+        genderValue.includes("kız") || genderValue.includes("kiz") || 
+        genderValue.includes("female") || genderValue.includes("woman") || 
+        genderValue.includes("f")) {
+      normalizedParam.filterVariable = "Female";
+    } 
+    // Farklı ifadeleri destekle: erkek, bay, male, man...
+    else if (genderValue.includes("erk") || genderValue.includes("bay") || 
+             genderValue.includes("male") || genderValue.includes("man") || 
+             genderValue.includes("m")) {
+      normalizedParam.filterVariable = "Male";
+    }
+    // Diğer cinsiyet için
+    else if (genderValue.includes("other") || genderValue.includes("diğer") || 
+             genderValue.includes("diger") || genderValue.includes("non")) {
+      normalizedParam.filterVariable = "Other";
+    }
+    else {
+      console.warn(`Unknown gender value: ${normalizedParam.filterVariable}`);
+      // Varsayılan olarak değeri olduğu gibi bırak, API hata döndürebilir
     }
   }
-
-      if (normalizedParam.name === "gender" ||
-        normalizedParam.name === "sex" ||
-        normalizedParam.name === "genders") {
-
-      normalizedParam.name = "gender";
-
-      const genderValue = (normalizedParam.filterVariable || "").toLowerCase();
-
-      if (genderValue.includes("kad") || genderValue.includes("bay") ||
-          genderValue.includes("kız") || genderValue.includes("kiz") ||
-          genderValue.includes("female") || genderValue.includes("woman") ||
-          genderValue.includes("f")) {
-        normalizedParam.filterVariable = "Female";
-      }
-      else if (genderValue.includes("erk") || genderValue.includes("bay") ||
-              genderValue.includes("male") || genderValue.includes("man") ||
-              genderValue.includes("m")) {
-        normalizedParam.filterVariable = "Male";
-      }
-      else {
-        console.warn(`Unknown gender value: ${normalizedParam.filterVariable}`);
-      }
-    }
-
-    if (normalizedParam.name === "experience" || 
+  
+  // Deneyim süresi filtresi normalizasyonu
+  if (normalizedParam.name === "experience" || 
       normalizedParam.name === "exp" || 
       normalizedParam.name === "experienceyears" || 
       normalizedParam.name === "yearsofexperience") {
     
-    normalizedParam.name = "experience";
+    normalizedParam.name = "experience"; // API'nin beklediği kesin alan adı
     
+    // Sayısal değerleri temizle (yıl, ay, gün gibi birimlerden arındır)
     normalizedParam.filterVariable = (normalizedParam.filterVariable || "")
       .replace(/[^\d.,]/g, '')
       .replace(/,/g, '.');
@@ -195,31 +398,40 @@ function normalizeFilterParameters(params: FilterParameter[]): FilterParameter[]
         .replace(/,/g, '.');
     }
     
+    // Varsayılan operator'ü belirle
     if (!normalizedParam.operator || normalizedParam.operator === "") {
       normalizedParam.operator = "equals";
     }
   }
-
-    if (normalizedParam.name === "salary") {
-      normalizedParam.filterVariable = param.filterVariable.replace(/[^\d.,]/g, '').replace(',', '.');
-
-      if (param.filterVariable2) {
-        normalizedParam.filterVariable2 = param.filterVariable2.replace(/[^\d.,]/g, '').replace(',', '.');
-      }
-
-      normalizedParam.salaryCurr = param.salaryCurr?.toUpperCase() || "EUR";
-      normalizedParam.salaryPeriod = param.salaryPeriod?.toUpperCase() || "MONTHLY";
+  
+  // Maaş filtreleri için sayısal değerleri düzenle
+  if (normalizedParam.name === "salary") {
+    // Sayısal olmayan karakterleri temizle (ama nokta ve virgül gibi noktalama işaretlerini tut)
+    normalizedParam.filterVariable = (normalizedParam.filterVariable || "")
+      .replace(/[^\d.,]/g, '')
+      .replace(/,/g, '.');
+    
+    if (normalizedParam.filterVariable2) {
+      normalizedParam.filterVariable2 = normalizedParam.filterVariable2
+        .replace(/[^\d.,]/g, '')
+        .replace(/,/g, '.');
     }
-
-    if (normalizedParam.name === "address" || normalizedParam.name === "country") {
-      normalizedParam.filterVariable = param.filterVariable
-        .split(' ')
-        .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-        .join(' ');
-    }
-
-    return normalizedParam;
-  });
+    
+    // Para birimi ve periyod için varsayılan değerler belirle
+    normalizedParam.salaryCurr = (normalizedParam.salaryCurr || "EUR").toUpperCase();
+    normalizedParam.salaryPeriod = (normalizedParam.salaryPeriod || "MONTHLY").toUpperCase();
+  }
+  
+  // Adres/konum filtresi için
+  if (normalizedParam.name === "address" || normalizedParam.name === "country") {
+    // İlk harfi büyük diğerlerini küçük yap (Title Case)
+    normalizedParam.filterVariable = (normalizedParam.filterVariable || "")
+      .split(' ')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ');
+  }
+  
+  return normalizedParam;
 }
 
 export async function generateFilterFromPrompt(
@@ -230,26 +442,32 @@ export async function generateFilterFromPrompt(
     return null;
   }
 
+  // Sorguyu normalize et
   const normalizedPrompt = normalizePrompt(prompt);
   
+  // Önbellekte varsa oradan döndür
   if (promptCache.has(normalizedPrompt)) {
     console.log("Cache hit for prompt:", normalizedPrompt);
-    return promptCache.get(normalizedPrompt)!;
+    const cachedResult = promptCache.get(normalizedPrompt);
+    if (cachedResult) {
+      return cachedResult;
+    }
   }
 
   try {
     console.log("Generating filter for prompt:", normalizedPrompt);
-
+    
+    // AI sorgusu için prompt
     const result = await model.generateContent(`
       Given the following prompt from a user, generate a structured query filter for a GraphQL API.
       Prompt: "${prompt}"
-
+      
       Return a valid JSON object that follows this structure:
       {
         "filterParameters": [
           {
             "logicalOperator": "AND", // Can be AND, OR
-            "name": "fieldName", // Supported fields: salary, fullName, email, address, stage, etc.
+            "name": "fieldName", // Supported fields: salary, fullName, email, address, gender, experience etc.
             "operator": "operatorType", // Can be: equals, contains, between, gte, lte
             "filterVariable": "value1",
             "filterVariable2": "value2", // Only needed for 'between' operator
@@ -279,110 +497,22 @@ export async function generateFilterFromPrompt(
       - For minimums, use operator="gte" with filterVariable
       - For maximums, use operator="lte" with filterVariable
 
-      For application stage filters:
-      - Use name="stage"
-      - Use operator="equals"
-      - Use filterVariable with the stage NAME (not ID)
-      - Available stages: "Sourced", "Applied", "Contacted", "Interview", "Evaluation", "Offer", "Hired", "Rejected"
-      
-      For example, for "Candidates from Germany with salary above 2000 Euro per month", 
-      the filter would include these parameters:
-      [
-        {
-          "logicalOperator": "AND",
-          "name": "address",
-          "operator": "contains", 
-          "filterVariable": "Germany"
-        },
-        {
-          "logicalOperator": "AND",
-          "name": "salary",
-          "operator": "gte",
-          "filterVariable": "2000",
-          "salaryCurr": "EUR",
-          "salaryPeriod": "MONTHLY"
-        }
-      ]
-
-      For "Candidates in hired stage", the filter would be:
-      [
-        {
-          "logicalOperator": "AND",
-          "name": "stage",
-          "operator": "equals", 
-          "filterVariable": "Hired"
-        }
-      ]
-
-      For job title filters:
-      - Use name="jobTitle"
-      - Use operator="equals"
-      - Use filterVariable with the job title NAME (not ID)
-      - Available job titles: "Sales Associate", "Marketing Manager", etc.
-
-      For example, for "Find candidates who applied for Marketing Manager position", 
-      the filter would be:
-      [
-        {
-          "logicalOperator": "AND",
-          "name": "jobTitle",
-          "operator": "equals", 
-          "filterVariable": "Marketing Manager"
-        }
-      ]
-
       For gender filters:
-      - Use name="gender"
+      - Use name="gender" 
       - Use operator="equals"
-      - Use filterVariable with either "Male" or "Female"
-
-      For example, for "Show me female candidates", the filter would be:
-      [
-        {
-          "logicalOperator": "AND",
-          "name": "gender",
-          "operator": "equals",
-          "filterVariable": "Female"
-        }
-      ]
+      - Use filterVariable with either "Male" or "Female" or "Other"
 
       For experience filters:
       - Use name="experience" 
-      - Use appropriate operator: "equals", "gte" (greater than or equal), "lte" (less than or equal), or "between"
+      - Use appropriate operator: "equals", "gte", "lte", or "between"
       - Use filterVariable with the number of years of experience
-      - For "between" operator, use both filterVariable and filterVariable2
-      
-      For example, for "Candidates with exactly 5 years of experience", the filter would be:
-      [
-        {
-          "logicalOperator": "AND",
-          "name": "experience",
-          "operator": "equals", 
-          "filterVariable": "5"
-        }
-      ]
-      
-      For "Candidates with more than 3 years of experience", the filter would be:
-      [
-        {
-          "logicalOperator": "AND",
-          "name": "experience",
-          "operator": "gte", 
-          "filterVariable": "3"
-        }
-      ]
-      
-      For "Candidates with 2-5 years of experience", the filter would be:
-      [
-        {
-          "logicalOperator": "AND",
-          "name": "experience",
-          "operator": "between", 
-          "filterVariable": "2",
-          "filterVariable2": "5"
-        }
-      ]
 
+      For user defined fields:
+      - For STAGE filters: Use name="stage", operator="equals", and filterVariable with the EXACT NAME (e.g., "Sourced", "Applied")
+      - For JOB TITLE filters: Use name="jobTitle", operator="equals", and filterVariable with the EXACT NAME (e.g., "Sales Associate")
+      - For TAG filters: Use name="tag", operator="equals", and filterVariable with the EXACT NAME of the tag
+      - For SKILL filters: Use name="skill", operator="equals", and filterVariable with the EXACT NAME of the skill
+      
       Return ONLY the structured JSON without any explanations or preamble.
     `);
 
@@ -410,8 +540,81 @@ export async function generateFilterFromPrompt(
       return null;
     }
 
-    parsedFilter.filterParameters = normalizeFilterParameters(parsedFilter.filterParameters);
+    // Önbelleğe almadan önce kullanıcı tanımlı alanları çözümle
+    if (parsedFilter.filterParameters && parsedFilter.filterParameters.length > 0) {
+      const resolvedParams = [];
+      
+      // Her parametre için uygun işlem yap
+      for (const param of parsedFilter.filterParameters) {
+        // Parametre geçerlilik kontrolü
+        if (!param || !param.name) continue;
+        
+        // Kullanıcı tanımlı alan mı kontrol et
+        if (isUserDefinedField(param.name)) {
+          const fieldType = param.name;
+          const fieldValue = param.filterVariable;
+          
+          // Eğer fieldValue doluysa
+          if (fieldValue) {
+            try {
+              // API'den ID'yi çöz
+              const resolvedId = await resolveUserDefinedField(fieldType, fieldValue);
+              
+              if (resolvedId) {
+                // ID bulunduysa güncelle
+                console.log(`Resolved user defined field: ${fieldType} "${fieldValue}" -> ${resolvedId}`);
+                
+                // Klonlanmış parametre oluştur ve ID'yi ata
+                const newParam = { ...param };
+                newParam.filterVariable = resolvedId;
+                
+                // Field adını normalize et
+                if (fieldType.includes('stage')) {
+                  newParam.name = "stage";
+                }
+                else if (fieldType.includes('job') || 
+                        fieldType.includes('title') || 
+                        fieldType.includes('position')) {
+                  newParam.name = "jobTitle";
+                }
+                else if (fieldType.includes('tag')) {
+                  newParam.name = "tag";
+                }
+                else if (fieldType.includes('skill')) {
+                  newParam.name = "skill";
+                }
+                
+                resolvedParams.push(newParam);
+              } else {
+                console.warn(`Could not resolve user defined field: ${fieldType} "${fieldValue}"`);
+                // Bu alanı fullName araması olarak ekle
+                if (parsedFilter.query) {
+                  parsedFilter.query += ` ${fieldValue}`;
+                } else {
+                  parsedFilter.query = fieldValue;
+                }
+              }
+            } catch (error) {
+              console.error("Error resolving field:", error);
+              // Hata durumunda da fullName araması olarak ekle
+              if (parsedFilter.query) {
+                parsedFilter.query += ` ${fieldValue}`;
+              } else {
+                parsedFilter.query = fieldValue;
+              }
+            }
+          }
+        } else {
+          // Standart bir alan, normalize et ve ekle
+          resolvedParams.push(normalizeFilterParameter(param));
+        }
+      }
+      
+      // Güncellenmiş parametre listesini kullan
+      parsedFilter.filterParameters = resolvedParams;
+    }
     
+    // Önbelleğe al
     promptCache.set(normalizedPrompt, parsedFilter);
     
     return parsedFilter;
@@ -421,95 +624,115 @@ export async function generateFilterFromPrompt(
   }
 }
 
-
+/**
+ * Önbelleği temizler
+ */
 export function clearPromptCache(): void {
   promptCache.clear();
   console.log("Prompt cache cleared");
 }
 
 /**
- * @param filter 
- * @returns 
+ * AI tarafından oluşturulan filtreyi geliştirici için okunabilir formata dönüştürür
+ * @param filter Oluşturulan filtre
+ * @returns Okunabilir filtre açıklaması
  */
 export function explainFilter(filter: QueryFilter): string {
-  if (!filter || !filter.filterParameters || filter.filterParameters.length === 0) {
+  if (!filter || !filter.filterParameters || filter.filterParameters.length === 0 && !filter.query) {
     return "No filter applied";
   }
 
-  const reverseStageMapping: Record<string, string> = {};
-  Object.entries(STAGE_ID_MAPPING).forEach(([name, id]) => {
-    reverseStageMapping[id] = name;
-  });
-
-  const reverseJobTitleMapping: Record<string, string> = {};
-  Object.entries(JOB_TITLE_ID_MAPPING).forEach(([name, id]) => {
-    reverseJobTitleMapping[id] = name;
-  });
-
-  const explanations = filter.filterParameters.map((param, index) => {
-    let explanation = index === 0 ? "Finding candidates " : `${param.logicalOperator} `;
-    
-    if (param.name === "stage" && param.operator === "equals") {
-      const stageName = reverseStageMapping[param.filterVariable] || param.filterVariable;
-      explanation += `in the "${stageName}" stage`;
-    } 
-    else if (param.name === "jobTitle" && param.operator === "equals") {
-      const jobTitle = reverseJobTitleMapping[param.filterVariable] || param.filterVariable;
-      explanation += `who applied for "${jobTitle}" position`;
-    }
-    else if (param.name === "gender" && param.operator === "equals") {
-      if (param.filterVariable === "Female") {
-        explanation += "who are female";
-      } else if (param.filterVariable === "Male") {
-        explanation += "who are male";
-      } else {
-        explanation += `with gender ${param.filterVariable}`;
+  let explanation = "Finding candidates ";
+  
+  // filterParameters'daki standart filtreleri açıkla
+  if (filter.filterParameters && filter.filterParameters.length > 0) {
+    const explanations = filter.filterParameters.map((param, index) => {
+      let partExplanation = index === 0 ? "" : `${param.logicalOperator} `;
+      
+      if (param.name === "gender" && param.operator === "equals") {
+        if (param.filterVariable === "Female") {
+          partExplanation += "who are female";
+        } else if (param.filterVariable === "Male") {
+          partExplanation += "who are male";
+        } else if (param.filterVariable === "Other") {
+          partExplanation += "who are non-binary";
+        } else {
+          partExplanation += `with gender ${param.filterVariable}`;
+        }
       }
-    }
-    else if (param.name === "experience") {
-      if (param.operator === "equals") {
-        explanation += `with exactly ${param.filterVariable} year${param.filterVariable === "1" ? "" : "s"} of experience`;
-      } 
-      else if (param.operator === "gte") {
-        explanation += `with at least ${param.filterVariable} year${param.filterVariable === "1" ? "" : "s"} of experience`;
-      } 
-      else if (param.operator === "lte") {
-        explanation += `with at most ${param.filterVariable} year${param.filterVariable === "1" ? "" : "s"} of experience`;
-      } 
-      else if (param.operator === "between" && param.filterVariable2) {
-        explanation += `with ${param.filterVariable}-${param.filterVariable2} years of experience`;
+      else if (param.name === "experience") {
+        if (param.operator === "equals") {
+          partExplanation += `with exactly ${param.filterVariable} year${param.filterVariable === "1" ? "" : "s"} of experience`;
+        } 
+        else if (param.operator === "gte") {
+          partExplanation += `with at least ${param.filterVariable} year${param.filterVariable === "1" ? "" : "s"} of experience`;
+        } 
+        else if (param.operator === "lte") {
+          partExplanation += `with at most ${param.filterVariable} year${param.filterVariable === "1" ? "" : "s"} of experience`;
+        } 
+        else if (param.operator === "between" && param.filterVariable2) {
+          partExplanation += `with ${param.filterVariable}-${param.filterVariable2} years of experience`;
+        }
+        else {
+          partExplanation += `with experience ${param.operator} ${param.filterVariable}`;
+        }
+      }
+      else if (param.name === "salary") {
+        const currency = param.salaryCurr || "EUR";
+        const period = (param.salaryPeriod || "MONTHLY").toLowerCase();
+        
+        if (param.operator === "between" && param.filterVariable2) {
+          partExplanation += `with salary between ${param.filterVariable} and ${param.filterVariable2} ${currency}/${period}`;
+        } else if (param.operator === "gte") {
+          partExplanation += `with salary at least ${param.filterVariable} ${currency}/${period}`;
+        } else if (param.operator === "lte") {
+          partExplanation += `with salary at most ${param.filterVariable} ${currency}/${period}`;
+        } else {
+          partExplanation += `with salary ${param.operator} ${param.filterVariable} ${currency}/${period}`;
+        }
+      }
+      else if (param.name === "address" || param.name === "country") {
+        partExplanation += `from ${param.filterVariable}`;
+      }
+      else if (param.name === "fullName" && param.operator === "contains") {
+        partExplanation += `with name containing "${param.filterVariable}"`;
+      }
+      else if (param.name === "stage") {
+        partExplanation += `in stage with ID ${param.filterVariable}`;
+      }
+      else if (param.name === "jobTitle") {
+        partExplanation += `applying for job with ID ${param.filterVariable}`;
+      }
+      else if (param.name === "tag") {
+        partExplanation += `tagged with ID ${param.filterVariable}`;
+      }
+      else if (param.name === "skill") {
+        partExplanation += `having skill with ID ${param.filterVariable}`;
       }
       else {
-        explanation += `with experience ${param.operator} ${param.filterVariable}`;
+        partExplanation += `where ${param.name} ${param.operator} ${param.filterVariable}`;
+        if (param.operator === "between" && param.filterVariable2) {
+          partExplanation += ` and ${param.filterVariable2}`;
+        }
       }
-    }
-    else if (param.name === "salary") {
-      const currency = param.salaryCurr || "EUR";
-      const period = param.salaryPeriod?.toLowerCase() || "monthly";
       
-      if (param.operator === "between") {
-        explanation += `with salary between ${param.filterVariable} and ${param.filterVariable2} ${currency}/${period}`;
-      } else if (param.operator === "gte") {
-        explanation += `with salary at least ${param.filterVariable} ${currency}/${period}`;
-      } else if (param.operator === "lte") {
-        explanation += `with salary at most ${param.filterVariable} ${currency}/${period}`;
-      }
-    }
-    else if (param.name === "address" || param.name === "country") {
-      explanation += `from ${param.filterVariable}`;
-    }
-    else if (param.name === "fullName" && param.operator === "contains") {
-      explanation += `with name containing "${param.filterVariable}"`;
-    }
-    else {
-      explanation += `where ${param.name} ${param.operator} ${param.filterVariable}`;
-      if (param.operator === "between" && param.filterVariable2) {
-        explanation += ` and ${param.filterVariable2}`;
-      }
-    }
+      return partExplanation;
+    });
     
-    return explanation;
-  });
+    explanation += explanations.join(" ");
+  }
   
-  return explanations.join(" ");
+  // query değerini açıkla (kullanıcı tanımlı alanlar için)
+  if (filter.query && filter.query.trim() !== "") {
+    const queryTerms = filter.query.trim();
+    
+    // filterParameters boşsa veya doluysa farklı başlangıç
+    if (filter.filterParameters && filter.filterParameters.length > 0) {
+      explanation += ` AND matching text search "${queryTerms}"`;
+    } else {
+      explanation += `matching text search "${queryTerms}"`;
+    }
+  }
+  
+  return explanation.trim();
 }

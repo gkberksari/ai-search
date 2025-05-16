@@ -18,6 +18,7 @@ import { Plus } from "lucide-react";
 import React, { useCallback, useEffect, useState } from "react";
 import { columns } from "./columns";
 import { DataTable } from "./data-table";
+import { fetchUserDefinedData } from '@/lib/ai-service';
 
 const GET_APPLICANTS = gql`
   query GetApplicants(
@@ -109,6 +110,27 @@ export default function TalentPool() {
 
     return () => clearTimeout(timer);
   }, [searchTerm]);
+
+  useEffect(() => {
+    // Asenkron olarak verileri çek
+    const preloadData = async () => {
+      try {
+        console.log("Preloading user defined data...");
+        const data = await fetchUserDefinedData();
+        console.log("Preloaded data:", {
+          stages: Object.keys(data.stages).length,
+          jobListings: Object.keys(data.jobListings).length,
+          tags: Object.keys(data.tags).length,
+          skills: Object.keys(data.skills).length,
+          rejectedReasons: Object.keys(data.rejectedReasons).length
+        });
+      } catch (error) {
+        console.error("Error preloading data:", error);
+      }
+    };
+    
+    preloadData();
+  }, []);
 
   const variables = React.useMemo(() => {
     if (customFilter) {
